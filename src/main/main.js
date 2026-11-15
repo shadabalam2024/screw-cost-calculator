@@ -10,6 +10,7 @@ function createWindow() {
   win = new BrowserWindow({
     width: 1280, height: 840, minWidth: 420, minHeight: 600,
     title: 'Screw Cost Calculator',
+    icon: path.join(__dirname, '..', '..', 'build', 'icon.png'),
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

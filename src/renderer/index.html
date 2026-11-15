@@ -322,7 +322,8 @@
     width: 210px; flex: 0 0 210px; background: var(--surface); border-right: 1px solid var(--border);
     padding: 22px 12px; position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: 4px;
   }
-  .brand { font-weight: 700; font-size: 1.05rem; padding: 4px 12px 18px; }
+  .brand { font-weight: 700; font-size: 0.98rem; padding: 4px 6px 18px; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+  .brand img { width: 28px; height: 28px; flex: none; }
   .navbtn {
     display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
     background: none; border: none; color: var(--text-muted); padding: 10px 12px; border-radius: 10px;
@@ -416,7 +417,7 @@
 <body>
 <div class="app">
 <nav class="sidebar">
-  <div class="brand">⚙️ Screw Manager</div>
+  <div class="brand"><img src="../../build/icon.png" alt=""><span id="brandName">Screw Manager</span></div>
   <button type="button" class="navbtn active" data-view="calc">🧮 Calculator</button>
   <button type="button" class="navbtn" data-view="inv">📦 Inventory</button>
   <button type="button" class="navbtn" data-view="bill">🧾 Billing</button>

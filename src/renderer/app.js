@@ -758,7 +758,7 @@ function bizSheetParts(biz, header) {
 
 async function applyBrand() {
   const biz = await window.api.getBusiness();
-  document.querySelector('.brand').textContent = '⚙️ ' + (biz.name || 'Screw Manager');
+  document.getElementById('brandName').textContent = biz.name || 'Screw Manager';
 }
 
 async function renderSettings() {

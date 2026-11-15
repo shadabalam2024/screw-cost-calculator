@@ -1,7 +1,7 @@
 {
   "name": "screw-cost-calculator",
   "productName": "Screw Cost Calculator",
-  "version": "1.6.1",
+  "version": "1.7.0",
   "description": "Offline screw manufacturing cost calculator with local SQLite storage",
   "main": "src/main/main.js",
   "author": "shadabalam2024",
@@ -21,12 +21,16 @@
     "productName": "Screw Cost Calculator",
     "files": [
       "src/**/*",
+      "build/icon.png",
       "package.json"
     ],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "build/icon.ico"
     },
     "nsis": {
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
       "oneClick": true,
       "perMachine": false,
       "deleteAppDataOnUninstall": false
