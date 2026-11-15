@@ -12,5 +12,9 @@ contextBridge.exposeInMainWorld('api', {
   addStock: (label, pieces, cost) => ipcRenderer.invoke('inv:add', label, pieces, cost),
   removeStock: (label, pieces) => ipcRenderer.invoke('inv:remove', label, pieces),
   deleteMove: id => ipcRenderer.invoke('inv:deleteMove', id),
+  createInvoice: payload => ipcRenderer.invoke('bill:create', payload),
+  listInvoices: () => ipcRenderer.invoke('bill:list'),
+  getInvoice: id => ipcRenderer.invoke('bill:get', id),
+  deleteInvoice: id => ipcRenderer.invoke('bill:delete', id),
   version: () => ipcRenderer.invoke('app:version'),
 });

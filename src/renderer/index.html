@@ -342,8 +342,27 @@
     padding: 5px 10px; border-radius: 8px; font-size: 0.8rem; cursor: pointer;
   }
   .mini-btn:hover { color: var(--text); border-color: var(--accent); }
-  #viewInv.wrap { display: block; }
-  #viewInv.wrap[hidden] { display: none; }
+  #viewInv.wrap, #viewBill.wrap { display: block; }
+  .bill-item { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .bill-item select { flex: 1 1 160px; min-width: 0; }
+  .bill-item input[type="number"] { width: 90px; }
+  .bill-item .line { margin-left: auto; font-weight: 600; min-width: 90px; text-align: right; }
+  .bill-form input[type="text"] { width: 100%; margin-bottom: 8px; }
+  .bill-total { display: flex; justify-content: space-between; font-size: 1.2rem; font-weight: 700; padding-top: 12px; }
+  .sheet-overlay { align-items: flex-start; overflow: auto; }
+  .invoice-sheet { background: #fff; color: #111; width: 100%; max-width: 520px; border-radius: 14px; padding: 28px; margin: 24px auto; box-shadow: 0 18px 50px rgba(0,0,0,.3); }
+  .invoice-sheet h3 { margin: 0 0 4px; font-size: 1.3rem; }
+  .invoice-sheet table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.92rem; }
+  .invoice-sheet th, .invoice-sheet td { padding: 7px 6px; border-bottom: 1px solid #ddd; text-align: left; }
+  .invoice-sheet .r { text-align: right; }
+  .invoice-sheet .actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .invoice-sheet .actions button { padding: 8px 14px; border-radius: 8px; border: 1px solid #ccc; background: #f5f5f5; cursor: pointer; }
+  @media print {
+    body > :not(.sheet-overlay) { display: none !important; }
+    .sheet-overlay { position: static; background: none; padding: 0; display: block; }
+    .invoice-sheet { box-shadow: none; margin: 0; max-width: none; }
+    .no-print { display: none !important; }
+  }
 
   footer {
     text-align: center;
@@ -357,10 +376,7 @@
 <div class="wrap" id="viewCalc">
   <header>
     <h1>⚙️ Screw Cost Calculator</h1>
-    <div class="tabs">
-      <button type="button" class="tabbtn active" data-view="calc">Calculator</button>
-      <button type="button" class="tabbtn" data-view="inv">Inventory</button>
-    </div>
+    <div class="tabs"></div>
   </header>
 
   <div class="top-controls">
@@ -582,10 +598,7 @@
 <div class="wrap" id="viewInv" hidden>
   <header>
     <h1>📦 Screw Inventory</h1>
-    <div class="tabs">
-      <button type="button" class="tabbtn" data-view="calc">Calculator</button>
-      <button type="button" class="tabbtn active" data-view="inv">Inventory</button>
-    </div>
+    <div class="tabs"></div>
   </header>
 
   <div class="inv-stats">
@@ -611,6 +624,34 @@
       <table class="inv">
         <thead><tr><th>Date</th><th>Size</th><th class="num">Change</th><th class="num">Cost/pc</th><th></th></tr></thead>
         <tbody id="histBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="wrap" id="viewBill" hidden>
+  <header>
+    <h1>🧾 Billing</h1>
+    <div class="tabs"></div>
+  </header>
+
+  <div class="card bill-form">
+    <h2>New bill</h2>
+    <input type="text" id="custName" placeholder="Customer name">
+    <input type="text" id="custPhone" placeholder="Phone (optional)">
+    <div id="billItems"></div>
+    <button type="button" class="reset" id="addItemBtn" style="margin-top:12px">+ Add item</button>
+    <div class="bill-total"><span>Total</span><span id="billTotal">—</span></div>
+    <button type="button" class="primary-btn" id="createBillBtn">Create bill &amp; deduct stock</button>
+    <div class="inv-msg" id="billMsg"></div>
+  </div>
+
+  <div class="card">
+    <h2>Past bills</h2>
+    <div class="tbl-scroll">
+      <table class="inv">
+        <thead><tr><th>Bill</th><th>Date</th><th>Customer</th><th class="num">Total</th><th></th></tr></thead>
+        <tbody id="billBody"></tbody>
       </table>
     </div>
   </div>

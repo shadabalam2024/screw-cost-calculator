@@ -31,6 +31,10 @@ function setupIpc() {
   ipcMain.handle('inv:add', (_e, label, pieces, cost) => { db.addStock(label, pieces, cost); });
   ipcMain.handle('inv:remove', (_e, label, pieces) => { db.removeStock(label, pieces); });
   ipcMain.handle('inv:deleteMove', (_e, id) => { db.deleteMove(Number(id)); });
+  ipcMain.handle('bill:create', (_e, payload) => db.createInvoice(payload));
+  ipcMain.handle('bill:list', () => db.listInvoices());
+  ipcMain.handle('bill:get', (_e, id) => db.getInvoice(Number(id)));
+  ipcMain.handle('bill:delete', (_e, id) => { db.deleteInvoice(Number(id)); });
   ipcMain.handle('settings:get', () => db.getSettings());
   ipcMain.handle('settings:set', (_e, k, v) => { db.setSetting(k, v); });
   ipcMain.handle('settings:clear', () => { db.clearSettings(); });
