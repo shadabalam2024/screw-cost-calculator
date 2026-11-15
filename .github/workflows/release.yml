@@ -1,6 +1,6 @@
 name: Release
 
-# Push a tag like v1.0.1 to build the Windows installer and publish it
+# Push a tag like v1.6.2 to build the Windows installer and publish it
 # (plus latest.yml, which the installed apps use to auto-update).
 on:
   push:
@@ -19,6 +19,12 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm run release
+      - run: npm run dist
+      - name: Publish release
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            dist/*.exe dist/*.exe.blockmap dist/latest.yml \
+            --title "${GITHUB_REF_NAME#v}" --generate-notes
