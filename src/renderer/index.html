@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Screw Manufacturing Cost Calculator</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --surface: #ffffff;
+    --surface-alt: #f0f2f5;
+    --border: #dfe3e8;
+    --text: #1a1d23;
+    --text-muted: #5f6672;
+    --accent: #2563eb;
+    --accent-soft: #e8efff;
+    --good: #16794f;
+    --good-soft: #e5f6ee;
+    --shadow: 0 1px 2px rgba(16,24,40,0.06), 0 1px 3px rgba(16,24,40,0.08);
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14161a;
+      --surface: #1c1f26;
+      --surface-alt: #22262e;
+      --border: #30343c;
+      --text: #eceef1;
+      --text-muted: #9aa1ad;
+      --accent: #6d9dff;
+      --accent-soft: #223156;
+      --good: #4ade95;
+      --good-soft: #163327;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.4);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14161a;
+    --surface: #1c1f26;
+    --surface-alt: #22262e;
+    --border: #30343c;
+    --text: #eceef1;
+    --text-muted: #9aa1ad;
+    --accent: #6d9dff;
+    --accent-soft: #223156;
+    --good: #4ade95;
+    --good-soft: #163327;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.4);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    margin: 0;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    display: flex;
+    justify-content: center;
+    padding: 28px 16px 60px;
+  }
+  .wrap { width: 100%; max-width: 760px; }
+  header { margin-bottom: 20px; }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; }
+  .sub { color: var(--text-muted); font-size: 0.92rem; margin: 0; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: var(--shadow);
+    padding: 20px;
+    margin-bottom: 18px;
+  }
+  .card h2 {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin: 0 0 14px;
+    font-weight: 700;
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .row:last-child { border-bottom: none; }
+  .row label {
+    font-size: 0.92rem;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+  }
+  .field .prefix, .field .suffix {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+  }
+  input[type="number"] {
+    width: 100px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface-alt);
+    color: var(--text);
+    font-size: 0.95rem;
+    text-align: right;
+    -moz-appearance: textfield;
+  }
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"]:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  select, input[type="text"] {
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface-alt);
+    color: var(--text);
+    font-size: 0.9rem;
+  }
+
+  .results { background: var(--accent-soft); }
+  .result-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 8px 0;
+  }
+  .result-row .k { color: var(--text-muted); font-size: 0.9rem; }
+  .result-row .v { font-size: 1rem; font-weight: 600; }
+  .result-row.total .v { font-size: 1.5rem; color: var(--accent); }
+  .result-row.total .k { font-size: 0.95rem; }
+  hr.soft { border: none; border-top: 1px dashed var(--border); margin: 6px 0; }
+
+  .final-card {
+    background: var(--good-soft);
+    border-color: var(--good);
+  }
+  .final-card .result-row .v { color: var(--good); }
+
+  .top-controls {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  button.reset {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: 7px 12px;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    cursor: pointer;
+  }
+  button.reset:hover { color: var(--text); border-color: var(--accent); }
+
+  .dim-list { display: flex; flex-direction: column; gap: 8px; }
+  .modal-overlay {
+    position: fixed; inset: 0; z-index: 1000;
+    background: rgba(0, 0, 0, 0.28);
+    display: flex; align-items: center; justify-content: center;
+    padding: 16px;
+    animation: modalFade 0.2s ease-out;
+  }
+  .modal {
+    position: relative;
+    background: rgba(246, 246, 248, 0.62);
+    color: #1d1d1f;
+    -webkit-backdrop-filter: blur(40px) saturate(200%);
+    backdrop-filter: blur(40px) saturate(200%);
+    border-radius: 30px;
+    border: 0.5px solid rgba(255,255,255,0.55);
+    box-shadow:
+      0 18px 50px rgba(0,0,0,0.22),
+      0 2px 8px rgba(0,0,0,0.08),
+      inset 0 1px 0.5px rgba(255,255,255,0.9),
+      inset 0 -1px 0.5px rgba(255,255,255,0.35);
+    width: 100%; max-width: 300px;
+    padding: 24px 16px 16px;
+    text-align: center;
+    animation: modalPop 0.28s cubic-bezier(.2,1.1,.3,1);
+  }
+  .modal h3 { margin: 0 8px 6px; font-size: 1.05rem; font-weight: 600; letter-spacing: -0.01em; }
+  .modal p { margin: 0 8px 20px; color: rgba(60,60,67,0.75); font-size: 0.82rem; line-height: 1.4; }
+  .modal-actions { display: flex; flex-direction: column; gap: 8px; }
+  .modal-actions button {
+    width: 100%; padding: 13px 14px; border-radius: 999px;
+    font-size: 1rem; font-weight: 600; cursor: pointer;
+    border: none;
+    transition: transform 0.12s, background 0.15s;
+  }
+  .modal-actions button:active { transform: scale(0.97); }
+  .modal-danger {
+    order: -1;
+    background: #ff3b30;
+    color: #fff;
+  }
+  .modal-danger:hover { background: #ff4f45; }
+  .modal-cancel {
+    background: rgba(120,120,128,0.16);
+    color: #007aff;
+  }
+  .modal-cancel:hover { background: rgba(120,120,128,0.24); }
+  .modal-actions button:focus-visible { outline: 3px solid rgba(0,122,255,0.5); outline-offset: 2px; }
+  @keyframes modalFade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes modalPop { from { opacity: 0; transform: scale(1.12); } to { opacity: 1; transform: none; } }
+  @media (prefers-color-scheme: dark) {
+    .modal {
+      background: rgba(44,44,48,0.62);
+      color: #f5f5f7;
+      border-color: rgba(255,255,255,0.14);
+      box-shadow: 0 18px 50px rgba(0,0,0,0.55), inset 0 1px 0.5px rgba(255,255,255,0.18);
+    }
+    .modal p { color: rgba(235,235,245,0.65); }
+    .modal-cancel { background: rgba(120,120,128,0.32); color: #0a84ff; }
+    .modal-cancel:hover { background: rgba(120,120,128,0.42); }
+    .modal-danger { background: #ff453a; }
+  }
+
+  .dim-item { display: flex; gap: 6px; align-items: stretch; }
+  .dim-item .dim-btn { flex: 1 1 auto; }
+  .dim-del {
+    background: none; border: 1px solid transparent; color: var(--text-muted);
+    border-radius: 8px; width: 28px; font-size: 1.1rem; cursor: pointer; line-height: 1;
+  }
+  .dim-del:hover { color: #c0392b; border-color: var(--border); }
+  .dim-add { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border); }
+  .dim-add input[type="text"], .dim-add input[type="number"] { width: 100%; text-align: left; }
+  .dim-add button { padding: 9px 12px; }
+  .dim-msg { color: #c0392b; font-size: 0.78rem; min-height: 0; }
+  .dim-btn {
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 0.95rem;
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .dim-btn small { color: var(--text-muted); font-size: 0.75rem; }
+  .dim-btn:hover { border-color: var(--accent); }
+  .dim-btn.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  @media (min-width: 900px) { .dims { position: sticky; top: 16px; } }
+  @media (max-width: 899px) { .dim-list { flex-direction: row; flex-wrap: wrap; } .dim-item { flex: 0 1 auto; } }
+
+  @media (min-width: 900px) {
+    body { padding: 40px 32px 60px; }
+    .wrap {
+      max-width: 1320px;
+      display: grid;
+      grid-template-columns: 220px 1fr 1fr;
+      column-gap: 24px;
+      align-items: start;
+    }
+    .wrap > header, .wrap > .top-controls, .wrap > footer { grid-column: 1 / -1; }
+    .col { min-width: 0; }
+    h1 { font-size: 1.8rem; }
+    .card { margin-bottom: 24px; }
+  }
+
+  /* Tablet: single column, a bit more breathing room */
+  @media (min-width: 600px) and (max-width: 899px) {
+    .wrap { max-width: 640px; }
+    body { padding: 32px 24px 60px; }
+  }
+
+  /* Phones */
+  @media (max-width: 599px) {
+    body { padding: 20px 12px 40px; }
+    h1 { font-size: 1.25rem; }
+    .sub { font-size: 0.85rem; }
+    .card { padding: 14px; border-radius: 12px; margin-bottom: 14px; }
+    .row { gap: 8px; }
+    .row label { font-size: 0.88rem; }
+    input[type="number"] { width: 84px; padding: 8px; font-size: 1rem; }
+    .top-controls { justify-content: space-between; }
+    .result-row.total .v { font-size: 1.3rem; }
+  }
+
+  @media (max-width: 360px) {
+    .row { flex-wrap: wrap; }
+    .field { margin-left: auto; }
+  }
+
+  footer {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    margin-top: 10px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>⚙️ Screw Cost Calculator</h1>
+  </header>
+
+  <div class="top-controls">
+    <select id="currency">
+      <option value="₹">₹ INR</option>
+      <option value="AED">AED د.إ</option>
+      <option value="$">$ USD</option>
+      <option value="€">€ EUR</option>
+      <option value="£">£ GBP</option>
+    </select>
+    <button class="reset" id="resetBtn">Reset to defaults</button>
+  </div>
+
+  <aside class="dims">
+    <div class="card">
+      <h2>Screw dimension</h2>
+      <div class="dim-list" id="dimList"></div>
+      <div class="dim-add">
+        <input type="text" id="newDimName" placeholder="Size, e.g. 8 × 60">
+        <input type="number" id="newDimWeight" placeholder="Weight (g)" step="0.0001" min="0">
+        <button type="button" id="addDimBtn" class="reset">+ Add dimension</button>
+        <div class="dim-msg" id="dimMsg"></div>
+      </div>
+    </div>
+  </aside>
+
+  <div class="col">
+  <div class="card">
+    <h2>Your batch</h2>
+    <div class="row">
+      <label>Total iron weight you have
+      </label>
+      <div class="field">
+        <input type="number" id="totalWeight" value="" placeholder="00" step="0.1" min="0">
+        <span class="suffix">kg</span>
+      </div>
+    </div>
+    <div class="row">
+      <label>Pieces per box
+      </label>
+      <div class="field">
+        <input type="number" id="piecesPerBox" value="" placeholder="00" step="1" min="1">
+        <span class="suffix">pcs</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Per kg cost heads</h2>
+    <div class="row">
+      <label>Wire
+      </label>
+      <div class="field">
+        <span class="prefix cur">₹</span>
+        <input type="number" id="wire" value="95" step="0.1" min="0">
+        <span class="suffix">/kg</span>
+      </div>
+    </div>
+    <div class="row">
+      <label>Header
+      </label>
+      <div class="field">
+        <span class="prefix cur">₹</span>
+        <input type="number" id="header" value="8" step="0.1" min="0">
+        <span class="suffix">/kg</span>
+      </div>
+    </div>
+    <div class="row">
+      <label>Rolling
+      </label>
+      <div class="field">
+        <span class="prefix cur">₹</span>
+        <input type="number" id="rolling" value="8" step="0.1" min="0">
+        <span class="suffix">/kg</span>
+      </div>
+    </div>
+    <div class="row">
+      <label>Electricity
+      </label>
+      <div class="field">
+        <span class="prefix cur">₹</span>
+        <input type="number" id="electricity" value="2" step="0.1" min="0">
+        <span class="suffix">/kg</span>
+      </div>
+    </div>
+    <div class="row">
+      <label>Plating
+      </label>
+      <div class="field">
+        <span class="prefix cur">₹</span>
+        <input type="number" id="plating" value="20" step="0.1" min="0">
+        <span class="suffix">/kg</span>
+      </div>
+    </div>
+    <div class="row">
+      <label>Wastage
+      </label>
+      <div class="field">
+        <span class="prefix cur">₹</span>
+        <input type="number" id="wastage" value="1" step="0.1" min="0">
+        <span class="suffix">/kg</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Packing (converted to per kg)</h2>
+    <div class="row">
+      <label>Packing cost
+      </label>
+      <div class="field">
+        <span class="prefix cur">₹</span>
+        <input type="number" id="packBox" value="5" step="0.1" min="0">
+        <span class="suffix">/box</span>
+      </div>
+    </div>
+    <div class="row">
+      <label>Net weight per box
+      </label>
+      <div class="field">
+        <input type="number" id="boxWeight" value="1" step="0.1" min="0.01">
+        <span class="suffix">kg</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Screw weight</h2>
+    <div class="row">
+      <label>Average screw weight
+      </label>
+      <div class="field">
+        <input type="number" id="screwWeight" value="2.056" step="0.1" min="0.01">
+        <span class="suffix">g/pc</span>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <div class="col">
+  <div class="card results">
+    <h2>Cost breakdown (per kg of finished screws)</h2>
+    <div class="result-row">
+      <span class="k">Wire</span>
+      <span class="v" id="r-wire">—</span>
+    </div>
+    <div class="result-row">
+      <span class="k">Header</span>
+      <span class="v" id="r-header">—</span>
+    </div>
+    <div class="result-row">
+      <span class="k">Rolling</span>
+      <span class="v" id="r-rolling">—</span>
+    </div>
+    <div class="result-row">
+      <span class="k">Electricity</span>
+      <span class="v" id="r-electricity">—</span>
+    </div>
+    <div class="result-row">
+      <span class="k">Plating</span>
+      <span class="v" id="r-plating">—</span>
+    </div>
+    <div class="result-row">
+      <span class="k">Wastage</span>
+      <span class="v" id="r-wastage">—</span>
+    </div>
+    <div class="result-row">
+      <span class="k">Packing <span style="font-size:0.78rem">(per kg equivalent)</span></span>
+      <span class="v" id="r-packing">—</span>
+    </div>
+    <hr class="soft">
+    <div class="result-row total">
+      <span class="k">Total production cost</span>
+      <span class="v" id="r-totalcost">—</span>
+    </div>
+  </div>
+
+  <div class="card final-card">
+    <h2>Per kg &amp; per piece</h2>
+    <div class="result-row">
+      <span class="k">Cost per kg</span>
+      <span class="v" id="r-finalcost">—</span>
+    </div>
+    <div class="result-row">
+      <span class="k">Pieces per kg <span style="font-size:0.78rem">(at given screw weight)</span></span>
+      <span class="v" id="r-pieces">—</span>
+    </div>
+    <div class="result-row">
+      <span class="k">Cost per piece</span>
+      <span class="v" id="r-costpiece">—</span>
+    </div>
+    <div class="result-row">
+      <span class="k">Cost per box <span style="font-size:0.78rem">(pieces per box × cost per piece)</span></span>
+      <span class="v" id="r-costbox">—</span>
+    </div>
+  </div>
+
+  <div class="card final-card">
+    <h2>For your whole batch</h2>
+    <div class="result-row">
+      <span class="k">Total pieces produced</span>
+      <span class="v" id="r-totalpieces">—</span>
+    </div>
+    <div class="result-row">
+      <span class="k">Number of boxes</span>
+      <span class="v" id="r-boxes">—</span>
+    </div>
+    <div class="result-row">
+      <span class="k">Total production cost</span>
+      <span class="v" id="r-totalbatchcost">—</span>
+    </div>
+  </div>
+  </div>
+
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
