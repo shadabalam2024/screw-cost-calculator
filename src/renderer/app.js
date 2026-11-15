@@ -366,7 +366,7 @@ function billTotal() { return billLines.reduce((t, l) => t + (parseFloat(l.qty) 
 
 function pcsOf(l, stock) {
   const q = parseInt(l.qty, 10) || 0;
-  if (l.unit === 'box') { const r = stock.find(x => x.label === l.label); return q * ((r && r.box_size) || 0); }
+  if (l.unit === 'box') { const r = stock.find(x => x.label === l.label); return q * (parseInt(l.boxSize, 10) || (r && r.box_size) || 0); }
   return q;
 }
 
@@ -395,13 +395,17 @@ function lineTable(lines, stock, withPrice, onChange, rebuild, reload) {
     unit.className = 'unit';
     unit.innerHTML = '<option value="pcs">Pieces</option><option value="box">Boxes</option>';
     unit.value = l.unit;
+    const defBox = () => { const r = stock.find(x => x.label === l.label); return (r && r.box_size) || 0; };
     const boxInput = document.createElement('input');
-    boxInput.type = 'number'; boxInput.min = '1'; boxInput.step = '1'; boxInput.placeholder = 'pcs per box';
-    boxInput.title = 'How many pieces are in one box of this size';
-    boxInput.style.marginTop = '6px'; boxInput.hidden = true;
-    boxInput.onchange = async () => {
-      if (!l.label) return;
-      try { await window.api.setBoxSize(l.label, boxInput.value); await loadBoxSizes(); await reload(); } catch (e) {}
+    boxInput.type = 'number'; boxInput.min = '1'; boxInput.step = '1'; boxInput.placeholder = 'pcs / box';
+    boxInput.title = 'Pieces in one box for this bill line';
+    boxInput.style.marginTop = '6px'; boxInput.hidden = l.unit !== 'box';
+    boxInput.value = l.boxSize || '';
+    const syncBox = () => {
+      if (l.boxCustom) return;
+      const d = defBox();
+      l.boxSize = d ? String(d) : '';
+      boxInput.value = l.boxSize;
     };
     tdUnit.append(unit, boxInput);
 
@@ -433,16 +437,17 @@ function lineTable(lines, stock, withPrice, onChange, rebuild, reload) {
       const box = (r && r.box_size) || 0;
       avail.textContent = r ? nf.format(r.pieces) + ' pcs' : '—';
       if (r && box) { const h = document.createElement('span'); h.className = 'hint'; h.textContent = boxText(r.pieces, box); avail.append(h); }
-      const needBox = l.unit === 'box' && l.label && !box;
-      boxInput.hidden = !needBox;
-      qtyHint.textContent = l.unit === 'box' ? (box ? '= ' + nf.format((parseInt(l.qty, 10) || 0) * box) + ' pcs' : (l.label ? 'Enter pcs per box' : '')) : '';
+      const eff = parseInt(l.boxSize, 10) || 0;
+      boxInput.hidden = l.unit !== 'box';
+      qtyHint.textContent = l.unit === 'box' ? (eff ? '= ' + nf.format((parseInt(l.qty, 10) || 0) * eff) + ' pcs' : 'Enter pcs per box') : '';
       if (withPrice) {
         price.placeholder = l.unit === 'box' ? 'per box' : 'per pc';
         amt.textContent = fmt((parseFloat(l.qty) || 0) * (parseFloat(l.price) || 0));
       }
     };
-    sel.onchange = () => { l.label = sel.value; refresh(); onChange(); };
-    unit.onchange = () => { l.unit = unit.value; refresh(); onChange(); };
+    sel.onchange = () => { l.label = sel.value; l.boxCustom = false; syncBox(); refresh(); onChange(); };
+    unit.onchange = () => { l.unit = unit.value; syncBox(); refresh(); onChange(); };
+    boxInput.oninput = () => { l.boxSize = boxInput.value; l.boxCustom = true; refresh(); onChange(); };
     qty.oninput = () => { l.qty = qty.value; refresh(); onChange(); };
     if (withPrice) price.oninput = () => { l.price = price.value; refresh(); onChange(); };
     refreshers.push(refresh);
@@ -506,7 +511,7 @@ async function createBill() {
   const msg = document.getElementById('billMsg');
   msg.className = 'inv-msg err';
   const items = billLines.filter(l => l.label || l.qty || l.price)
-    .map(l => ({ label: l.label, unit: l.unit, qty: l.qty, unitPrice: l.price }));
+    .map(l => ({ label: l.label, unit: l.unit, qty: l.qty, boxSize: l.boxSize, unitPrice: l.price }));
   try {
     const id = await window.api.createInvoice({
       customerName: document.getElementById('custName').value,
@@ -660,7 +665,7 @@ async function renderShipping() {
 async function createTransfer() {
   const msg = document.getElementById('shipMsg');
   msg.className = 'inv-msg err';
-  const items = shipLines.filter(l => l.label || l.qty).map(l => ({ label: l.label, unit: l.unit, qty: l.qty }));
+  const items = shipLines.filter(l => l.label || l.qty).map(l => ({ label: l.label, unit: l.unit, qty: l.qty, boxSize: l.boxSize }));
   try {
     const id = await window.api.createTransfer({
       shopId: document.getElementById('shipShop').value,

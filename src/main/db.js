@@ -103,8 +103,8 @@ function open(userDataDir) {
     let box = null;
     let pieces = qty;
     if (unit === 'box') {
-      box = boxFor(label);
-      if (!box) throw new Error('Set a box size for ' + label + ' in Inventory first');
+      box = Math.round(Number(i.boxSize)) || boxFor(label);
+      if (!(box > 0)) throw new Error('Enter pieces per box for ' + label);
       pieces = qty * box;
     }
     return { label, unit, qty, box_size: box, pieces };
