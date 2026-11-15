@@ -7,5 +7,10 @@ contextBridge.exposeInMainWorld('api', {
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSetting: (k, v) => ipcRenderer.invoke('settings:set', k, v),
   clearSettings: () => ipcRenderer.invoke('settings:clear'),
+  inventorySummary: () => ipcRenderer.invoke('inv:summary'),
+  inventoryHistory: () => ipcRenderer.invoke('inv:history'),
+  addStock: (label, pieces, cost) => ipcRenderer.invoke('inv:add', label, pieces, cost),
+  removeStock: (label, pieces) => ipcRenderer.invoke('inv:remove', label, pieces),
+  deleteMove: id => ipcRenderer.invoke('inv:deleteMove', id),
   version: () => ipcRenderer.invoke('app:version'),
 });

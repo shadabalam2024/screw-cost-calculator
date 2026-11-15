@@ -26,6 +26,11 @@ function setupIpc() {
   ipcMain.handle('dims:list', () => db.listDimensions());
   ipcMain.handle('dims:add', (_e, label, weight) => { db.addDimension(label, weight); });
   ipcMain.handle('dims:delete', (_e, label) => { db.deleteDimension(label); });
+  ipcMain.handle('inv:summary', () => db.inventorySummary());
+  ipcMain.handle('inv:history', () => db.inventoryHistory());
+  ipcMain.handle('inv:add', (_e, label, pieces, cost) => { db.addStock(label, pieces, cost); });
+  ipcMain.handle('inv:remove', (_e, label, pieces) => { db.removeStock(label, pieces); });
+  ipcMain.handle('inv:deleteMove', (_e, id) => { db.deleteMove(Number(id)); });
   ipcMain.handle('settings:get', () => db.getSettings());
   ipcMain.handle('settings:set', (_e, k, v) => { db.setSetting(k, v); });
   ipcMain.handle('settings:clear', () => { db.clearSettings(); });

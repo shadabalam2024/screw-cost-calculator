@@ -15,6 +15,14 @@ function open(userDataDir) {
       label TEXT NOT NULL UNIQUE COLLATE NOCASE,
       weight REAL NOT NULL CHECK (weight > 0)
     );
+    CREATE TABLE IF NOT EXISTS inventory_moves (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      label TEXT NOT NULL COLLATE NOCASE,
+      pieces INTEGER NOT NULL CHECK (pieces != 0),
+      unit_cost REAL,
+      note TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
   `);
   const seeded = db.prepare("SELECT value FROM settings WHERE key = '_seeded'").get();
@@ -26,7 +34,39 @@ function open(userDataDir) {
     })();
   }
 
+  const stockOf = label => db.prepare(
+    'SELECT COALESCE(SUM(pieces), 0) AS n FROM inventory_moves WHERE label = ?').get(label).n;
+
   return {
+    inventorySummary: () => db.prepare(`
+      SELECT label,
+             SUM(pieces) AS pieces,
+             COALESCE(SUM(CASE WHEN pieces > 0 THEN pieces * unit_cost END) /
+                      NULLIF(SUM(CASE WHEN pieces > 0 AND unit_cost IS NOT NULL THEN pieces END), 0), 0) AS avg_cost
+      FROM inventory_moves GROUP BY label HAVING SUM(pieces) > 0 ORDER BY label`).all(),
+    inventoryHistory: () => db.prepare(
+      'SELECT id, label, pieces, unit_cost, created_at FROM inventory_moves ORDER BY id DESC LIMIT 200').all(),
+    addStock(label, pieces, unitCost) {
+      label = String(label || '').trim();
+      pieces = Math.round(Number(pieces));
+      if (!label || !(pieces > 0)) throw new Error('Invalid stock entry');
+      const cost = Number(unitCost);
+      db.prepare('INSERT INTO inventory_moves (label, pieces, unit_cost) VALUES (?, ?, ?)')
+        .run(label, pieces, cost >= 0 ? cost : null);
+    },
+    removeStock(label, pieces) {
+      pieces = Math.round(Number(pieces));
+      if (!(pieces > 0)) throw new Error('Enter a quantity above 0');
+      if (pieces > stockOf(label)) throw new Error('Not enough stock for ' + label);
+      db.prepare('INSERT INTO inventory_moves (label, pieces) VALUES (?, ?)').run(label, -pieces);
+    },
+    deleteMove(id) {
+      const m = db.prepare('SELECT label, pieces FROM inventory_moves WHERE id = ?').get(id);
+      if (!m) return;
+      // Deleting an addition must not push stock below zero
+      if (m.pieces > 0 && stockOf(m.label) - m.pieces < 0) throw new Error('Cannot delete: stock from this entry was already removed');
+      db.prepare('DELETE FROM inventory_moves WHERE id = ?').run(id);
+    },
     listDimensions: () => db.prepare('SELECT label, weight FROM dimensions ORDER BY id').all(),
     addDimension(label, weight) {
       label = String(label || '').trim();

@@ -72,6 +72,7 @@ function calculate() {
   const totalPieces = piecesPerKg * totalWeight;
   const totalBatchCost = totalCost * totalWeight;
 
+  batch = { pieces: Math.round(totalPieces), costPiece };
   document.getElementById('r-totalpieces').textContent = totalPieces.toFixed(0) + ' pcs';
 
   const perBox = num('piecesPerBox');
@@ -90,9 +91,10 @@ function calculate() {
   });
 }
 
+let batch = { pieces: 0, costPiece: 0 };
 let selectedDim = defaultDimensions[0].label;
 
-function confirmDelete(title, message) {
+function confirmDelete(title, message, okLabel, okClass) {
   return new Promise(resolve => {
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
@@ -101,8 +103,9 @@ function confirmDelete(title, message) {
         '<h3 id="mTitle"></h3><p id="mMsg"></p>' +
         '<div class="modal-actions">' +
           '<button type="button" class="modal-cancel">Cancel</button>' +
-          '<button type="button" class="modal-danger">Delete</button>' +
+          '<button type="button" class="' + (okClass || 'modal-danger') + '"></button>' +
         '</div></div>';
+    overlay.querySelector('.modal-actions button:last-child').textContent = okLabel || 'Delete';
     overlay.querySelector('#mTitle').textContent = title;
     overlay.querySelector('#mMsg').textContent = message;
 
@@ -117,7 +120,7 @@ function confirmDelete(title, message) {
     document.addEventListener('keydown', onKey);
     overlay.addEventListener('mousedown', e => { if (e.target === overlay) close(false); });
     overlay.querySelector('.modal-cancel').onclick = () => close(false);
-    overlay.querySelector('.modal-danger').onclick = () => close(true);
+    overlay.querySelector('.modal-actions button:last-child').onclick = () => close(true);
 
     document.body.appendChild(overlay);
     overlay.querySelector('.modal-cancel').focus();
@@ -200,6 +203,102 @@ document.addEventListener('wheel', e => {
   const t = e.target;
   if (t instanceof HTMLInputElement && t.type === 'number' && document.activeElement === t) t.blur();
 }, { passive: true });
+
+// ---------- Inventory ----------
+const nf = new Intl.NumberFormat();
+const cleanErr = e => String((e && e.message) || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+
+function showView(v) {
+  document.getElementById('viewCalc').hidden = v !== 'calc';
+  document.getElementById('viewInv').hidden = v !== 'inv';
+  if (v === 'inv') renderInventory();
+}
+document.querySelectorAll('.tabbtn').forEach(b => b.addEventListener('click', () => showView(b.dataset.view)));
+
+async function addToInventory() {
+  const msg = document.getElementById('invMsg');
+  msg.className = 'inv-msg';
+  if (!(batch.pieces > 0)) {
+    msg.className = 'inv-msg err';
+    msg.textContent = 'Enter the total iron weight first so pieces can be calculated.';
+    return;
+  }
+  const ok = await confirmDelete('Add to inventory?',
+    nf.format(batch.pieces) + ' pcs of ' + selectedDim + ' at ' + fmt(batch.costPiece) + ' per piece.', 'Add', 'modal-ok');
+  if (!ok) return;
+  try {
+    await window.api.addStock(selectedDim, batch.pieces, batch.costPiece);
+    msg.textContent = 'Added ' + nf.format(batch.pieces) + ' pcs of ' + selectedDim + ' to inventory.';
+  } catch (e) {
+    msg.className = 'inv-msg err';
+    msg.textContent = 'Could not add to inventory.';
+  }
+}
+document.getElementById('addInvBtn').addEventListener('click', addToInventory);
+
+function cell(text, cls) {
+  const td = document.createElement('td');
+  if (cls) td.className = cls;
+  td.textContent = text;
+  return td;
+}
+
+async function renderInventory() {
+  const [stock, hist] = await Promise.all([window.api.inventorySummary(), window.api.inventoryHistory()]);
+  const stockMsg = document.getElementById('stockMsg');
+  stockMsg.textContent = '';
+  let totalPieces = 0, totalValue = 0;
+
+  const body = document.getElementById('stockBody');
+  body.innerHTML = '';
+  if (!stock.length) {
+    body.innerHTML = '<tr><td colspan="5" class="empty">No stock yet. Use “Add to inventory” on the calculator.</td></tr>';
+  }
+  stock.forEach(r => {
+    const value = r.pieces * r.avg_cost;
+    totalPieces += r.pieces;
+    totalValue += value;
+    const tr = document.createElement('tr');
+    tr.append(cell(r.label), cell(nf.format(r.pieces), 'num'), cell(fmt(r.avg_cost), 'num'), cell(fmt(value), 'num'));
+    const td = document.createElement('td');
+    const input = document.createElement('input');
+    input.type = 'number'; input.min = '1'; input.step = '1'; input.placeholder = 'pcs';
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'mini-btn'; btn.textContent = 'Remove'; btn.style.marginLeft = '6px';
+    btn.onclick = async () => {
+      try { await window.api.removeStock(r.label, input.value); await renderInventory(); }
+      catch (e) { stockMsg.textContent = cleanErr(e); }
+    };
+    td.append(input, btn);
+    tr.append(td);
+    body.append(tr);
+  });
+  document.getElementById('s-sizes').textContent = stock.length;
+  document.getElementById('s-pieces').textContent = nf.format(totalPieces);
+  document.getElementById('s-value').textContent = fmt(totalValue);
+
+  const hb = document.getElementById('histBody');
+  hb.innerHTML = '';
+  if (!hist.length) hb.innerHTML = '<tr><td colspan="5" class="empty">No activity yet.</td></tr>';
+  hist.forEach(h => {
+    const tr = document.createElement('tr');
+    const date = new Date(h.created_at.replace(' ', 'T') + 'Z').toLocaleString();
+    tr.append(cell(date), cell(h.label),
+      cell((h.pieces > 0 ? '+' : '') + nf.format(h.pieces), 'num ' + (h.pieces > 0 ? 'pos' : 'neg')),
+      cell(h.unit_cost == null ? '—' : fmt(h.unit_cost), 'num'));
+    const act = document.createElement('td');
+    const del = document.createElement('button');
+    del.type = 'button'; del.className = 'dim-del'; del.textContent = '×'; del.title = 'Delete entry';
+    del.onclick = async () => {
+      if (!await confirmDelete('Delete this entry?', 'This removes it from the history and adjusts stock.')) return;
+      try { await window.api.deleteMove(h.id); await renderInventory(); }
+      catch (e) { stockMsg.textContent = cleanErr(e); }
+    };
+    act.append(del);
+    tr.append(act);
+    hb.append(tr);
+  });
+}
 
 (async function init() {
   dimensions = await window.api.listDimensions();

@@ -209,12 +209,14 @@
     transition: transform 0.12s, background 0.15s;
   }
   .modal-actions button:active { transform: scale(0.97); }
-  .modal-danger {
+  .modal-danger, .modal-ok {
     order: -1;
     background: #ff3b30;
     color: #fff;
   }
   .modal-danger:hover { background: #ff4f45; }
+  .modal-ok { background: #007aff; color: #fff; }
+  .modal-ok:hover { background: #2a8bff; }
   .modal-cancel {
     background: rgba(120,120,128,0.16);
     color: #007aff;
@@ -306,6 +308,43 @@
     .field { margin-left: auto; }
   }
 
+  .tabs { display: flex; gap: 6px; margin-top: 12px; }
+  .tabbtn {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text-muted);
+    padding: 8px 16px; border-radius: 999px; font-size: 0.9rem; cursor: pointer;
+  }
+  .tabbtn:hover { color: var(--text); border-color: var(--accent); }
+  .tabbtn.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .primary-btn {
+    width: 100%; margin-top: 12px; padding: 11px 14px; border-radius: 10px; border: none;
+    background: var(--accent); color: #fff; font-size: 0.95rem; font-weight: 600; cursor: pointer;
+  }
+  .primary-btn:hover { filter: brightness(1.08); }
+  .inv-msg { font-size: 0.82rem; margin-top: 8px; min-height: 1em; color: var(--good); }
+  .inv-msg.err { color: #c0392b; }
+  [hidden] { display: none !important; }
+  .inv-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px; box-shadow: var(--shadow); }
+  .stat .k { color: var(--text-muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  .stat .v { font-size: 1.35rem; font-weight: 700; margin-top: 4px; }
+  table.inv { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  table.inv th { text-align: left; color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  table.inv td { padding: 9px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  table.inv tr:last-child td { border-bottom: none; }
+  table.inv .num { text-align: right; font-variant-numeric: tabular-nums; }
+  table.inv input[type="number"] { width: 80px; padding: 6px 8px; }
+  .tbl-scroll { overflow-x: auto; }
+  .pos { color: var(--good); font-weight: 600; }
+  .neg { color: #c0392b; font-weight: 600; }
+  .empty { color: var(--text-muted); font-size: 0.9rem; padding: 6px 0; }
+  .mini-btn {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text-muted);
+    padding: 5px 10px; border-radius: 8px; font-size: 0.8rem; cursor: pointer;
+  }
+  .mini-btn:hover { color: var(--text); border-color: var(--accent); }
+  #viewInv.wrap { display: block; }
+  #viewInv.wrap[hidden] { display: none; }
+
   footer {
     text-align: center;
     color: var(--text-muted);
@@ -315,9 +354,13 @@
 </style>
 </head>
 <body>
-<div class="wrap">
+<div class="wrap" id="viewCalc">
   <header>
     <h1>⚙️ Screw Cost Calculator</h1>
+    <div class="tabs">
+      <button type="button" class="tabbtn active" data-view="calc">Calculator</button>
+      <button type="button" class="tabbtn" data-view="inv">Inventory</button>
+    </div>
   </header>
 
   <div class="top-controls">
@@ -529,9 +572,48 @@
       <span class="k">Total production cost</span>
       <span class="v" id="r-totalbatchcost">—</span>
     </div>
+    <button type="button" class="primary-btn" id="addInvBtn">+ Add to inventory</button>
+    <div class="inv-msg" id="invMsg"></div>
   </div>
   </div>
 
+</div>
+
+<div class="wrap" id="viewInv" hidden>
+  <header>
+    <h1>📦 Screw Inventory</h1>
+    <div class="tabs">
+      <button type="button" class="tabbtn" data-view="calc">Calculator</button>
+      <button type="button" class="tabbtn active" data-view="inv">Inventory</button>
+    </div>
+  </header>
+
+  <div class="inv-stats">
+    <div class="stat"><div class="k">Sizes in stock</div><div class="v" id="s-sizes">0</div></div>
+    <div class="stat"><div class="k">Total pieces</div><div class="v" id="s-pieces">0</div></div>
+    <div class="stat"><div class="k">Stock value</div><div class="v" id="s-value">—</div></div>
+  </div>
+
+  <div class="card">
+    <h2>Current stock</h2>
+    <div class="tbl-scroll">
+      <table class="inv">
+        <thead><tr><th>Size</th><th class="num">Pieces</th><th class="num">Avg cost/pc</th><th class="num">Value</th><th>Remove stock</th></tr></thead>
+        <tbody id="stockBody"></tbody>
+      </table>
+    </div>
+    <div class="inv-msg err" id="stockMsg"></div>
+  </div>
+
+  <div class="card">
+    <h2>History</h2>
+    <div class="tbl-scroll">
+      <table class="inv">
+        <thead><tr><th>Date</th><th>Size</th><th class="num">Change</th><th class="num">Cost/pc</th><th></th></tr></thead>
+        <tbody id="histBody"></tbody>
+      </table>
+    </div>
+  </div>
 </div>
 
 <script src="app.js"></script>
