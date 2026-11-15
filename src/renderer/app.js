@@ -754,7 +754,6 @@ async function renderSettings() {
   document.getElementById('bizTax').value = biz.taxId;
   document.getElementById('bizFooter').value = biz.footer;
   document.getElementById('appVer').textContent = 'v' + info.version;
-  document.getElementById('dataPath').textContent = info.dataPath;
 
   const body = document.getElementById('setShopBody');
   body.innerHTML = '';
