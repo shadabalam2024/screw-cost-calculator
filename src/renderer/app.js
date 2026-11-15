@@ -835,7 +835,6 @@ document.getElementById('checkUpdBtn').addEventListener('click', async () => {
   if (r.status === 'dev' || r.status === 'error') showUpdate(r);
 });
 document.getElementById('installUpdBtn').addEventListener('click', () => window.api.installUpdate());
-document.getElementById('openDataBtn').addEventListener('click', () => window.api.openDataFolder());
 document.getElementById('backupBtn').addEventListener('click', async () => {
   const msg = document.getElementById('dataMsg');
   try {
