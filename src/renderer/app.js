@@ -361,7 +361,7 @@ function pcsOf(l, stock) {
   return q;
 }
 
-function lineTable(lines, stock, withPrice, onChange, rebuild) {
+function lineTable(lines, stock, withPrice, onChange, rebuild, reload) {
   const table = document.createElement('table');
   table.className = 'inv line-table';
   table.innerHTML = '<thead><tr><th>Item</th><th class="num">In stock</th><th>Unit</th><th class="num">Qty</th>' +
@@ -386,7 +386,15 @@ function lineTable(lines, stock, withPrice, onChange, rebuild) {
     unit.className = 'unit';
     unit.innerHTML = '<option value="pcs">Pieces</option><option value="box">Boxes</option>';
     unit.value = l.unit;
-    tdUnit.append(unit);
+    const boxInput = document.createElement('input');
+    boxInput.type = 'number'; boxInput.min = '1'; boxInput.step = '1'; boxInput.placeholder = 'pcs per box';
+    boxInput.title = 'How many pieces are in one box of this size';
+    boxInput.style.marginTop = '6px'; boxInput.hidden = true;
+    boxInput.onchange = async () => {
+      if (!l.label) return;
+      try { await window.api.setBoxSize(l.label, boxInput.value); await loadBoxSizes(); await reload(); } catch (e) {}
+    };
+    tdUnit.append(unit, boxInput);
 
     const tdQty = document.createElement('td'); tdQty.className = 'num';
     const qty = document.createElement('input');
@@ -416,9 +424,9 @@ function lineTable(lines, stock, withPrice, onChange, rebuild) {
       const box = (r && r.box_size) || 0;
       avail.textContent = r ? nf.format(r.pieces) + ' pcs' : '—';
       if (r && box) { const h = document.createElement('span'); h.className = 'hint'; h.textContent = boxText(r.pieces, box); avail.append(h); }
-      unit.querySelector('[value="box"]').disabled = !box;
-      if (!box && l.unit === 'box') { l.unit = 'pcs'; unit.value = 'pcs'; }
-      qtyHint.textContent = l.unit === 'box' && box ? '= ' + nf.format((parseInt(l.qty, 10) || 0) * box) + ' pcs' : '';
+      const needBox = l.unit === 'box' && l.label && !box;
+      boxInput.hidden = !needBox;
+      qtyHint.textContent = l.unit === 'box' ? (box ? '= ' + nf.format((parseInt(l.qty, 10) || 0) * box) + ' pcs' : (l.label ? 'Enter pcs per box' : '')) : '';
       if (withPrice) {
         price.placeholder = l.unit === 'box' ? 'per box' : 'per pc';
         amt.textContent = fmt((parseFloat(l.qty) || 0) * (parseFloat(l.price) || 0));
@@ -442,7 +450,7 @@ let billTable = null;
 function renderBillLines() {
   const box = document.getElementById('billItems');
   box.innerHTML = '';
-  billTable = lineTable(billLines, billStock, true, updateBillTotals, renderBillLines);
+  billTable = lineTable(billLines, billStock, true, updateBillTotals, renderBillLines, async () => { billStock = await window.api.inventorySummary(); renderBillLines(); });
   box.append(billTable);
   updateBillTotals();
 }
@@ -571,7 +579,7 @@ const shipNo = id => 'TRF-' + String(id).padStart(4, '0');
 function renderShipLines() {
   const box = document.getElementById('shipItems');
   box.innerHTML = '';
-  shipTable = lineTable(shipLines, shipStock, false, updateShipTotals, renderShipLines);
+  shipTable = lineTable(shipLines, shipStock, false, updateShipTotals, renderShipLines, async () => { shipStock = await window.api.inventorySummary(); renderShipLines(); });
   box.append(shipTable);
   updateShipTotals();
 }
