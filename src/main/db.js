@@ -77,14 +77,14 @@ function open(userDataDir) {
     deleteDimension: label => db.prepare('DELETE FROM dimensions WHERE label = ?').run(String(label)),
     getSettings() {
       const out = {};
-      db.prepare("SELECT key, value FROM settings WHERE key NOT LIKE '\_%' ESCAPE '\'").all()
+      db.prepare("SELECT key, value FROM settings WHERE key != '_seeded'").all()
         .forEach(r => { out[r.key] = r.value; });
       return out;
     },
     setSetting: (k, v) => db.prepare(
       'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'
     ).run(String(k), String(v)),
-    clearSettings: () => db.prepare("DELETE FROM settings WHERE key NOT LIKE '\_%' ESCAPE '\'").run(),
+    clearSettings: () => db.prepare("DELETE FROM settings WHERE key != '_seeded'").run(),
     close: () => db.close(),
   };
 }
