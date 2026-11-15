@@ -212,6 +212,25 @@ function open(userDataDir) {
         db.prepare('DELETE FROM transfers WHERE id = ?').run(id);
       })();
     },
+    getBusiness() {
+      const out = { name: '', address: '', phone: '', taxId: '', footer: '' };
+      db.prepare("SELECT key, value FROM settings WHERE substr(key, 1, 4) = 'biz_'").all()
+        .forEach(r => { const k = r.key.slice(4); if (k in out) out[k] = r.value; });
+      return out;
+    },
+    setBusiness(obj) {
+      const up = db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
+      db.transaction(() => {
+        ['name', 'address', 'phone', 'taxId', 'footer'].forEach(k => up.run('biz_' + k, String((obj && obj[k]) || '').trim()));
+      })();
+    },
+    updateShop(id, name, location) {
+      name = String(name || '').trim();
+      if (!name) throw new Error('Shop name cannot be empty');
+      try { db.prepare('UPDATE shops SET name = ?, location = ? WHERE id = ?').run(name, String(location || '').trim(), id); }
+      catch (e) { if (String(e.message).includes('UNIQUE')) throw new Error('A shop with that name already exists'); throw e; }
+    },
+    backup: dest => db.backup(dest),
     listDimensions: () => db.prepare('SELECT label, weight FROM dimensions ORDER BY id').all(),
     addDimension(label, weight) {
       label = String(label || '').trim();
@@ -222,14 +241,14 @@ function open(userDataDir) {
     deleteDimension: label => db.prepare('DELETE FROM dimensions WHERE label = ?').run(String(label)),
     getSettings() {
       const out = {};
-      db.prepare("SELECT key, value FROM settings WHERE key != '_seeded'").all()
+      db.prepare("SELECT key, value FROM settings WHERE key != '_seeded' AND substr(key, 1, 4) != 'biz_'").all()
         .forEach(r => { out[r.key] = r.value; });
       return out;
     },
     setSetting: (k, v) => db.prepare(
       'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'
     ).run(String(k), String(v)),
-    clearSettings: () => db.prepare("DELETE FROM settings WHERE key != '_seeded'").run(),
+    clearSettings: () => db.prepare("DELETE FROM settings WHERE key != '_seeded' AND substr(key, 1, 4) != 'biz_'").run(),
     close: () => db.close(),
   };
 }

@@ -1,7 +1,7 @@
 {
   "name": "screw-cost-calculator",
   "productName": "Screw Cost Calculator",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Offline screw manufacturing cost calculator with local SQLite storage",
   "main": "src/main/main.js",
   "author": "shadabalam2024",

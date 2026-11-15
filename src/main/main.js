@@ -47,12 +47,41 @@ function setupIpc() {
   ipcMain.handle('settings:set', (_e, k, v) => { db.setSetting(k, v); });
   ipcMain.handle('settings:clear', () => { db.clearSettings(); });
   ipcMain.handle('app:version', () => app.getVersion());
+  ipcMain.handle('biz:get', () => db.getBusiness());
+  ipcMain.handle('biz:set', (_e, obj) => { db.setBusiness(obj); });
+  ipcMain.handle('shop:update', (_e, id, name, location) => { db.updateShop(Number(id), name, location); });
+  ipcMain.handle('app:info', () => ({ version: app.getVersion(), dataPath: app.getPath('userData'), packaged: app.isPackaged }));
+  ipcMain.handle('app:openData', () => shell.openPath(app.getPath('userData')));
+  ipcMain.handle('app:backup', async () => {
+    const stamp = new Date().toISOString().slice(0, 10);
+    const { canceled, filePath } = await dialog.showSaveDialog(win, {
+      title: 'Back up database', defaultPath: `screw-backup-${stamp}.db`, filters: [{ name: 'SQLite database', extensions: ['db'] }],
+    });
+    if (canceled || !filePath) return null;
+    await db.backup(filePath);
+    return filePath;
+  });
+  ipcMain.handle('app:checkUpdate', async () => {
+    if (!app.isPackaged) return { status: 'dev' };
+    try { await autoUpdater.checkForUpdates(); return { status: 'started' }; }
+    catch (e) { return { status: 'error', message: String(e.message || e) }; }
+  });
+  ipcMain.handle('app:installUpdate', () => { autoUpdater.quitAndInstall(); });
+}
+
+function sendUpdate(payload) {
+  if (win && !win.isDestroyed()) win.webContents.send('update:status', payload);
 }
 
 function setupAutoUpdate() {
   if (!app.isPackaged) return;
   autoUpdater.autoDownload = true;
+  autoUpdater.on('checking-for-update', () => sendUpdate({ status: 'checking' }));
+  autoUpdater.on('update-available', info => sendUpdate({ status: 'available', version: info.version }));
+  autoUpdater.on('update-not-available', () => sendUpdate({ status: 'none' }));
+  autoUpdater.on('download-progress', p => sendUpdate({ status: 'progress', percent: Math.round(p.percent) }));
   autoUpdater.on('update-downloaded', async info => {
+    sendUpdate({ status: 'downloaded', version: info.version });
     const { response } = await dialog.showMessageBox(win, {
       type: 'info', buttons: ['Restart now', 'Later'], defaultId: 0,
       title: 'Update ready',
@@ -61,8 +90,8 @@ function setupAutoUpdate() {
     });
     if (response === 0) autoUpdater.quitAndInstall();
   });
-  autoUpdater.on('error', err => console.error('Update error:', err));
-  autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+  autoUpdater.on('error', err => { console.error('Update error:', err); sendUpdate({ status: 'error', message: String(err.message || err) }); });
+  autoUpdater.checkForUpdates().catch(() => {});
 }
 
 if (!app.requestSingleInstanceLock()) {

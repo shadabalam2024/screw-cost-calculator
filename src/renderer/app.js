@@ -208,7 +208,7 @@ document.addEventListener('wheel', e => {
 const nf = new Intl.NumberFormat();
 const cleanErr = e => String((e && e.message) || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
 
-const VIEWS = [['calc', 'viewCalc'], ['inv', 'viewInv'], ['bill', 'viewBill'], ['ship', 'viewShip']];
+const VIEWS = [['calc', 'viewCalc'], ['inv', 'viewInv'], ['bill', 'viewBill'], ['ship', 'viewShip'], ['set', 'viewSet']];
 function showView(v) {
   VIEWS.forEach(([key, id]) => { document.getElementById(id).hidden = key !== v; });
   document.querySelectorAll('.navbtn').forEach(b => b.classList.toggle('active', b.dataset.view === v));
@@ -216,6 +216,7 @@ function showView(v) {
   if (v === 'inv') renderInventory();
   if (v === 'bill') renderBilling();
   if (v === 'ship') renderShipping();
+  if (v === 'set') renderSettings();
 }
 document.querySelectorAll('.navbtn').forEach(b => b.addEventListener('click', () => showView(b.dataset.view)));
 
@@ -233,6 +234,9 @@ async function addToInventory() {
   try {
     await window.api.addStock(selectedDim, batch.pieces, batch.costPiece);
     msg.textContent = 'Added ' + nf.format(batch.pieces) + ' pcs of ' + selectedDim + ' to inventory.';
+    document.getElementById('totalWeight').value = '';
+    calculate();
+    persistInputs();
   } catch (e) {
     msg.className = 'inv-msg err';
     msg.textContent = 'Could not add to inventory.';
@@ -444,6 +448,7 @@ async function createBill() {
 async function showInvoice(id) {
   const inv = await window.api.getInvoice(id);
   if (!inv) return;
+  const biz = await window.api.getBusiness();
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay sheet-overlay';
   const sheet = document.createElement('div');
@@ -480,7 +485,7 @@ async function showInvoice(id) {
   document.addEventListener('keydown', onKey);
   overlay.addEventListener('mousedown', e => { if (e.target === overlay) done(); });
   actions.append(print, close);
-  sheet.append(h, meta, cust, table, actions);
+  sheet.append(...bizSheetParts(biz, true), h, meta, cust, table, ...bizSheetParts(biz, false), actions);
   overlay.append(sheet);
   document.body.append(overlay);
 }
@@ -588,6 +593,7 @@ async function createTransfer() {
 async function showTransfer(id) {
   const t = await window.api.getTransfer(id);
   if (!t) return;
+  const biz = await window.api.getBusiness();
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay sheet-overlay';
   const sheet = document.createElement('div');
@@ -621,7 +627,7 @@ async function showTransfer(id) {
   document.addEventListener('keydown', onKey);
   overlay.addEventListener('mousedown', e => { if (e.target === overlay) done(); });
   actions.append(print, close);
-  sheet.append(h, meta, to, table, actions);
+  sheet.append(...bizSheetParts(biz, true), h, meta, to, table, ...bizSheetParts(biz, false), actions);
   overlay.append(sheet);
   document.body.append(overlay);
 }
@@ -640,6 +646,129 @@ document.getElementById('addShopBtn').addEventListener('click', addShop);
 document.getElementById('addShipItemBtn').addEventListener('click', () => { shipLines.push({ label: '', pieces: '' }); renderShipLines(); });
 document.getElementById('createShipBtn').addEventListener('click', createTransfer);
 
+// ---------- Settings ----------
+function bizSheetParts(biz, header) {
+  if (header) {
+    if (!(biz.name || biz.address || biz.phone || biz.taxId)) return [];
+    const d = document.createElement('div');
+    d.className = 'biz-head';
+    if (biz.name) { const st = document.createElement('strong'); st.textContent = biz.name; d.append(st); }
+    [biz.address, [biz.phone, biz.taxId && 'GST/Tax ID: ' + biz.taxId].filter(Boolean).join(' · ')].filter(Boolean).forEach(t => {
+      const l = document.createElement('div'); l.textContent = t; d.append(l);
+    });
+    return [d];
+  }
+  if (!biz.footer) return [];
+  const f = document.createElement('div');
+  f.className = 'sheet-foot';
+  f.textContent = biz.footer;
+  return [f];
+}
+
+async function applyBrand() {
+  const biz = await window.api.getBusiness();
+  document.querySelector('.brand').textContent = '⚙️ ' + (biz.name || 'Screw Manager');
+}
+
+async function renderSettings() {
+  const [biz, shops, info] = await Promise.all([window.api.getBusiness(), window.api.listShops(), window.api.appInfo()]);
+  document.getElementById('bizName').value = biz.name;
+  document.getElementById('bizAddress').value = biz.address;
+  document.getElementById('bizPhone').value = biz.phone;
+  document.getElementById('bizTax').value = biz.taxId;
+  document.getElementById('bizFooter').value = biz.footer;
+  document.getElementById('appVer').textContent = 'v' + info.version;
+  document.getElementById('dataPath').textContent = info.dataPath;
+
+  const body = document.getElementById('setShopBody');
+  body.innerHTML = '';
+  const msg = document.getElementById('setShopMsg');
+  msg.textContent = '';
+  shops.forEach(sh => {
+    const tr = document.createElement('tr');
+    const n = document.createElement('input'); n.type = 'text'; n.value = sh.name;
+    const l = document.createElement('input'); l.type = 'text'; l.value = sh.location || ''; l.placeholder = 'Location';
+    const tdN = document.createElement('td'); tdN.append(n);
+    const tdL = document.createElement('td'); tdL.append(l);
+    const tdA = document.createElement('td'); tdA.style.whiteSpace = 'nowrap';
+    const save = document.createElement('button');
+    save.type = 'button'; save.className = 'mini-btn'; save.textContent = 'Save';
+    save.onclick = async () => {
+      try { await window.api.updateShop(sh.id, n.value, l.value); msg.className = 'inv-msg'; msg.textContent = 'Saved ' + n.value.trim() + '.'; }
+      catch (e) { msg.className = 'dim-msg'; msg.textContent = cleanErr(e); }
+    };
+    const del = document.createElement('button');
+    del.type = 'button'; del.className = 'dim-del'; del.textContent = '×'; del.title = 'Delete shop';
+    del.onclick = async () => {
+      if (!await confirmDelete('Delete ' + sh.name + '?', 'The shop will be removed from your list.')) return;
+      try { await window.api.deleteShop(sh.id); renderSettings(); }
+      catch (e) { msg.className = 'dim-msg'; msg.textContent = cleanErr(e); }
+    };
+    tdA.append(save, del);
+    tr.append(tdN, tdL, tdA);
+    body.append(tr);
+  });
+  // add-new row
+  const tr = document.createElement('tr');
+  const n = document.createElement('input'); n.type = 'text'; n.placeholder = 'New shop name';
+  const l = document.createElement('input'); l.type = 'text'; l.placeholder = 'Location';
+  const add = document.createElement('button'); add.type = 'button'; add.className = 'mini-btn'; add.textContent = '+ Add';
+  add.onclick = async () => {
+    try { await window.api.addShop(n.value, l.value); renderSettings(); }
+    catch (e) { msg.className = 'dim-msg'; msg.textContent = cleanErr(e); }
+  };
+  const a = document.createElement('td'); a.append(n);
+  const b = document.createElement('td'); b.append(l);
+  const c = document.createElement('td'); c.append(add);
+  tr.append(a, b, c);
+  body.append(tr);
+}
+
+document.getElementById('saveBizBtn').addEventListener('click', async () => {
+  const msg = document.getElementById('bizMsg');
+  try {
+    await window.api.setBusiness({
+      name: document.getElementById('bizName').value,
+      address: document.getElementById('bizAddress').value,
+      phone: document.getElementById('bizPhone').value,
+      taxId: document.getElementById('bizTax').value,
+      footer: document.getElementById('bizFooter').value,
+    });
+    msg.className = 'inv-msg'; msg.textContent = 'Saved.';
+    applyBrand();
+  } catch (e) { msg.className = 'inv-msg err'; msg.textContent = 'Could not save.'; }
+});
+
+const updStatus = document.getElementById('updStatus');
+function showUpdate(u) {
+  const install = document.getElementById('installUpdBtn');
+  install.hidden = u.status !== 'downloaded';
+  updStatus.textContent = ({
+    checking: 'Checking for updates…',
+    available: 'Version ' + u.version + ' found. Downloading…',
+    none: 'You are on the latest version.',
+    progress: 'Downloading update… ' + u.percent + '%',
+    downloaded: 'Version ' + u.version + ' is ready to install.',
+    error: 'Could not check for updates: ' + (u.message || 'unknown error'),
+    dev: 'Updates only work in the installed app.',
+  })[u.status] || '';
+}
+window.api.onUpdateStatus(showUpdate);
+document.getElementById('checkUpdBtn').addEventListener('click', async () => {
+  showUpdate({ status: 'checking' });
+  const r = await window.api.checkUpdate();
+  if (r.status === 'dev' || r.status === 'error') showUpdate(r);
+});
+document.getElementById('installUpdBtn').addEventListener('click', () => window.api.installUpdate());
+document.getElementById('openDataBtn').addEventListener('click', () => window.api.openDataFolder());
+document.getElementById('backupBtn').addEventListener('click', async () => {
+  const msg = document.getElementById('dataMsg');
+  try {
+    const f = await window.api.backupDatabase();
+    msg.className = 'inv-msg'; msg.textContent = f ? 'Backup saved to ' + f : '';
+  } catch (e) { msg.className = 'inv-msg err'; msg.textContent = 'Backup failed.'; }
+});
+
 (async function init() {
   dimensions = await window.api.listDimensions();
   const saved = await window.api.getSettings();
@@ -647,5 +776,6 @@ document.getElementById('createShipBtn').addEventListener('click', createTransfe
   if (saved.currency) document.getElementById('currency').value = saved.currency;
   if (saved.selectedDim) selectedDim = saved.selectedDim;
   calculate();
+  applyBrand();
 })();
 

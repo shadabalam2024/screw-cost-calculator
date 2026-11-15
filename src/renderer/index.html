@@ -338,6 +338,19 @@
   .line-table input[type="number"] { width: 100%; max-width: 110px; }
   .line-table select { width: 100%; min-width: 140px; }
   .line-table td.num, .line-table th.num { white-space: nowrap; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .form-grid label { display: flex; flex-direction: column; gap: 5px; font-size: 0.82rem; color: var(--text-muted); }
+  .form-grid label.full { grid-column: 1 / -1; }
+  .form-grid input[type="text"] { width: 100%; font-size: 0.95rem; color: var(--text); }
+  .inline-btn { width: auto; margin-top: 14px; padding: 10px 20px; }
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .btn-row .reset { padding: 9px 14px; font-size: 0.88rem; }
+  table.inv input[type="text"] { width: 100%; min-width: 120px; }
+  .biz-head { text-align: center; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid #ddd; font-size: 0.85rem; }
+  .biz-head strong { display: block; font-size: 1.15rem; }
+  .sheet-foot { margin-top: 10px; font-size: 0.82rem; color: #555; text-align: center; }
+  .path { font-family: Consolas, monospace; font-size: 0.82rem; color: var(--text-muted); word-break: break-all; }
+  @media (max-width: 599px) { .form-grid { grid-template-columns: 1fr; } }
   .page h1 { margin-bottom: 4px; }
   .page header { margin-bottom: 22px; }
   @media (max-width: 899px) {
@@ -405,6 +418,8 @@
   <button type="button" class="navbtn" data-view="inv">📦 Inventory</button>
   <button type="button" class="navbtn" data-view="bill">🧾 Billing</button>
   <button type="button" class="navbtn" data-view="ship">🚚 Shop transfers</button>
+  <div style="flex:1"></div>
+  <button type="button" class="navbtn" data-view="set">⚙️ Settings</button>
 </nav>
 <main>
 <div class="wrap" id="viewCalc">
@@ -750,6 +765,59 @@
         <thead><tr><th>Transfer</th><th>Date</th><th>Shop</th><th class="num">Pieces</th><th>Note</th><th></th></tr></thead>
         <tbody id="shipBody"></tbody>
       </table>
+    </div>
+  </div>
+</div>
+<div class="wrap page" id="viewSet" hidden>
+  <header>
+    <h1>⚙️ Settings</h1>
+    <p class="sub">Business details, shops, updates and data.</p>
+  </header>
+
+  <div class="card">
+    <h2>Business details</h2>
+    <p class="sub" style="margin:0 0 14px">Shown at the top of printed bills and transfer slips.</p>
+    <div class="form-grid">
+      <label class="full">Business name<input type="text" id="bizName" placeholder="e.g. Sazin Screws"></label>
+      <label class="full">Address<input type="text" id="bizAddress"></label>
+      <label>Phone<input type="text" id="bizPhone"></label>
+      <label>GST / Tax ID<input type="text" id="bizTax"></label>
+      <label class="full">Bill footer note<input type="text" id="bizFooter" placeholder="e.g. Thank you for your business!"></label>
+    </div>
+    <button type="button" class="primary-btn inline-btn" id="saveBizBtn">Save details</button>
+    <span class="inv-msg" id="bizMsg" style="margin-left:12px"></span>
+  </div>
+
+  <div class="card">
+    <h2>Shops</h2>
+    <div class="tbl-scroll">
+      <table class="inv">
+        <thead><tr><th>Shop name</th><th>Location</th><th></th></tr></thead>
+        <tbody id="setShopBody"></tbody>
+      </table>
+    </div>
+    <div class="dim-msg" id="setShopMsg"></div>
+  </div>
+
+  <div class="split2">
+    <div class="card">
+      <h2>App updates</h2>
+      <div class="sum-row"><span>Installed version</span><strong id="appVer">—</strong></div>
+      <div class="btn-row" style="margin-top:10px">
+        <button type="button" class="reset" id="checkUpdBtn">Check for updates</button>
+        <button type="button" class="reset" id="installUpdBtn" hidden>Restart &amp; install</button>
+      </div>
+      <div class="inv-msg" id="updStatus" style="color:var(--text-muted)"></div>
+    </div>
+    <div class="card">
+      <h2>Your data</h2>
+      <p class="sub" style="margin:0 0 6px">Everything is stored on this computer in:</p>
+      <div class="path" id="dataPath"></div>
+      <div class="btn-row" style="margin-top:14px">
+        <button type="button" class="reset" id="openDataBtn">Open data folder</button>
+        <button type="button" class="reset" id="backupBtn">Back up database…</button>
+      </div>
+      <div class="inv-msg" id="dataMsg"></div>
     </div>
   </div>
 </div>
