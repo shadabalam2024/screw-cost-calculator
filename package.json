@@ -33,7 +33,8 @@
       "uninstallerIcon": "build/icon.ico",
       "oneClick": true,
       "perMachine": false,
-      "deleteAppDataOnUninstall": false
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "Screw-Cost-Calculator-Setup-${version}.exe"
     },
     "publish": [
       {
