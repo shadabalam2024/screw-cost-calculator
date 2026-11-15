@@ -330,13 +330,14 @@
   }
   .navbtn:hover { background: var(--surface-alt); color: var(--text); }
   .navbtn.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-  .split { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px; align-items: start; }
+  .split { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 24px; align-items: start; }
   .split2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
   .side-panel { position: sticky; top: 24px; }
   .side-panel input[type="text"], .side-panel select { width: 100%; margin-bottom: 10px; }
   .sum-row { display: flex; justify-content: space-between; padding: 6px 0; color: var(--text-muted); font-size: 0.9rem; }
-  .line-table input[type="number"] { width: 100%; max-width: 110px; }
-  .line-table select { width: 100%; min-width: 140px; }
+  .line-table input[type="number"] { width: 100%; max-width: 78px; }
+  .line-table select { width: 100%; min-width: 100px; }
+  .line-table td, .line-table th { padding-left: 5px; padding-right: 5px; }
   .line-table td.num, .line-table th.num { white-space: nowrap; }
   .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .form-grid label { display: flex; flex-direction: column; gap: 5px; font-size: 0.82rem; color: var(--text-muted); }
@@ -351,6 +352,8 @@
   .sheet-foot { margin-top: 10px; font-size: 0.82rem; color: #555; text-align: center; }
   .path { font-family: Consolas, monospace; font-size: 0.82rem; color: var(--text-muted); word-break: break-all; }
   @media (max-width: 599px) { .form-grid { grid-template-columns: 1fr; } }
+  .hint { display: block; font-size: 0.74rem; color: var(--text-muted); margin-top: 2px; }
+  table.inv select.unit { width: auto; min-width: 84px; }
   .page h1 { margin-bottom: 4px; }
   .page header { margin-bottom: 22px; }
   @media (max-width: 899px) {
@@ -658,7 +661,7 @@
     <h2>Current stock</h2>
     <div class="tbl-scroll">
       <table class="inv">
-        <thead><tr><th>Size</th><th class="num">Pieces</th><th class="num">Avg cost/pc</th><th class="num">Value</th><th>Remove stock</th></tr></thead>
+        <thead><tr><th>Size</th><th class="num">Pieces</th><th class="num">Boxes</th><th class="num">Pcs / box</th><th class="num">Avg cost/pc</th><th class="num">Value</th><th>Remove stock</th></tr></thead>
         <tbody id="stockBody"></tbody>
       </table>
     </div>

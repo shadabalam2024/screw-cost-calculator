@@ -47,6 +47,8 @@ function setupIpc() {
   ipcMain.handle('settings:set', (_e, k, v) => { db.setSetting(k, v); });
   ipcMain.handle('settings:clear', () => { db.clearSettings(); });
   ipcMain.handle('app:version', () => app.getVersion());
+  ipcMain.handle('box:set', (_e, label, n) => { db.setBoxSize(label, n); });
+  ipcMain.handle('box:list', () => db.getBoxSizes());
   ipcMain.handle('biz:get', () => db.getBusiness());
   ipcMain.handle('biz:set', (_e, obj) => { db.setBusiness(obj); });
   ipcMain.handle('shop:update', (_e, id, name, location) => { db.updateShop(Number(id), name, location); });

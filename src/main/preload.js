@@ -33,5 +33,7 @@ contextBridge.exposeInMainWorld('api', {
   checkUpdate: () => ipcRenderer.invoke('app:checkUpdate'),
   installUpdate: () => ipcRenderer.invoke('app:installUpdate'),
   onUpdateStatus: cb => ipcRenderer.on('update:status', (_e, payload) => cb(payload)),
+  setBoxSize: (label, n) => ipcRenderer.invoke('box:set', label, n),
+  getBoxSizes: () => ipcRenderer.invoke('box:list'),
   version: () => ipcRenderer.invoke('app:version'),
 });

@@ -144,6 +144,7 @@ function renderDims() {
     b.onclick = () => {
       selectedDim = d.label;
       document.getElementById('screwWeight').value = d.weight;
+      if (boxOf(d.label)) document.getElementById('piecesPerBox').value = boxOf(d.label);
       calculate();
       persistInputs();
     };
@@ -220,6 +221,21 @@ function showView(v) {
 }
 document.querySelectorAll('.navbtn').forEach(b => b.addEventListener('click', () => showView(b.dataset.view)));
 
+let boxSizes = {};
+const boxOf = label => boxSizes[String(label).toLowerCase()] || 0;
+async function loadBoxSizes() {
+  boxSizes = {};
+  (await window.api.getBoxSizes()).forEach(r => { boxSizes[r.label.toLowerCase()] = r.pieces_per_box; });
+}
+function boxText(pieces, box) {
+  if (!(box > 0)) return '—';
+  const b = Math.floor(pieces / box), r = pieces - b * box;
+  const parts = [];
+  if (b) parts.push(nf.format(b) + (b === 1 ? ' box' : ' boxes'));
+  if (r) parts.push(nf.format(r) + ' pcs');
+  return parts.join(' + ') || '0';
+}
+
 async function addToInventory() {
   const msg = document.getElementById('invMsg');
   msg.className = 'inv-msg';
@@ -229,10 +245,12 @@ async function addToInventory() {
     return;
   }
   const ok = await confirmDelete('Add to inventory?',
-    nf.format(batch.pieces) + ' pcs of ' + selectedDim + ' at ' + fmt(batch.costPiece) + ' per piece.', 'Add', 'modal-ok');
+    nf.format(batch.pieces) + ' pcs of ' + selectedDim + ' at ' + fmt(batch.costPiece) + ' per piece.' +
+      (num('piecesPerBox') > 0 ? ' That is ' + boxText(batch.pieces, num('piecesPerBox')) + ' (' + nf.format(num('piecesPerBox')) + ' pcs per box).' : ''), 'Add', 'modal-ok');
   if (!ok) return;
   try {
     await window.api.addStock(selectedDim, batch.pieces, batch.costPiece);
+    if (num('piecesPerBox') > 0) { await window.api.setBoxSize(selectedDim, num('piecesPerBox')); await loadBoxSizes(); }
     msg.textContent = 'Added ' + nf.format(batch.pieces) + ' pcs of ' + selectedDim + ' to inventory.';
     document.getElementById('totalWeight').value = '';
     calculate();
@@ -260,24 +278,44 @@ async function renderInventory() {
   const body = document.getElementById('stockBody');
   body.innerHTML = '';
   if (!stock.length) {
-    body.innerHTML = '<tr><td colspan="5" class="empty">No stock yet. Use “Add to inventory” on the calculator.</td></tr>';
+    body.innerHTML = '<tr><td colspan="7" class="empty">No stock yet. Use “Add to inventory” on the calculator.</td></tr>';
   }
   stock.forEach(r => {
     const value = r.pieces * r.avg_cost;
     totalPieces += r.pieces;
     totalValue += value;
     const tr = document.createElement('tr');
-    tr.append(cell(r.label), cell(nf.format(r.pieces), 'num'), cell(fmt(r.avg_cost), 'num'), cell(fmt(value), 'num'));
+    tr.append(cell(r.label), cell(nf.format(r.pieces), 'num'), cell(boxText(r.pieces, r.box_size), 'num'));
+    const tdBox = document.createElement('td');
+    tdBox.className = 'num';
+    const boxInput = document.createElement('input');
+    boxInput.type = 'number'; boxInput.min = '1'; boxInput.step = '1'; boxInput.placeholder = 'set';
+    boxInput.value = r.box_size || '';
+    boxInput.title = 'Pieces in one box. Changing this updates the box count.';
+    boxInput.onchange = async () => {
+      try { await window.api.setBoxSize(r.label, boxInput.value); await loadBoxSizes(); await renderInventory(); }
+      catch (e) { stockMsg.textContent = cleanErr(e); }
+    };
+    tdBox.append(boxInput);
+    tr.append(tdBox, cell(fmt(r.avg_cost), 'num'), cell(fmt(value), 'num'));
     const td = document.createElement('td');
+    td.style.whiteSpace = 'nowrap';
     const input = document.createElement('input');
-    input.type = 'number'; input.min = '1'; input.step = '1'; input.placeholder = 'pcs';
+    input.type = 'number'; input.min = '1'; input.step = '1'; input.placeholder = 'qty';
+    const unit = document.createElement('select');
+    unit.className = 'unit';
+    unit.innerHTML = '<option value="pcs">pcs</option><option value="box">boxes</option>';
+    unit.style.marginLeft = '4px';
+    unit.querySelector('[value="box"]').disabled = !r.box_size;
     const btn = document.createElement('button');
     btn.type = 'button'; btn.className = 'mini-btn'; btn.textContent = 'Remove'; btn.style.marginLeft = '6px';
     btn.onclick = async () => {
-      try { await window.api.removeStock(r.label, input.value); await renderInventory(); }
+      const q = Math.round(Number(input.value));
+      const pcs = unit.value === 'box' ? q * (r.box_size || 0) : q;
+      try { await window.api.removeStock(r.label, pcs); await renderInventory(); }
       catch (e) { stockMsg.textContent = cleanErr(e); }
     };
-    td.append(input, btn);
+    td.append(input, unit, btn);
     tr.append(td);
     body.append(tr);
   });
@@ -311,17 +349,23 @@ async function renderInventory() {
 
 // ---------- Billing ----------
 let billStock = [];
-let billLines = [{ label: '', pieces: '', price: '' }];
+let billLines = [{ label: '', unit: 'pcs', qty: '', price: '' }];
 const billNo = id => 'INV-' + String(id).padStart(4, '0');
 const money = (n, cur) => (cur || '') + ' ' + Number(n).toFixed(2);
 
-function billTotal() { return billLines.reduce((t, l) => t + (parseFloat(l.pieces) || 0) * (parseFloat(l.price) || 0), 0); }
+function billTotal() { return billLines.reduce((t, l) => t + (parseFloat(l.qty) || 0) * (parseFloat(l.price) || 0), 0); }
+
+function pcsOf(l, stock) {
+  const q = parseInt(l.qty, 10) || 0;
+  if (l.unit === 'box') { const r = stock.find(x => x.label === l.label); return q * ((r && r.box_size) || 0); }
+  return q;
+}
 
 function lineTable(lines, stock, withPrice, onChange, rebuild) {
   const table = document.createElement('table');
   table.className = 'inv line-table';
-  table.innerHTML = '<thead><tr><th>Item</th><th class="num">In stock</th><th class="num">Qty (pcs)</th>' +
-    (withPrice ? '<th class="num">Price / pc</th><th class="num">Amount</th>' : '') + '<th></th></tr></thead>';
+  table.innerHTML = '<thead><tr><th>Item</th><th class="num">In stock</th><th>Unit</th><th class="num">Qty</th>' +
+    (withPrice ? '<th class="num">Price / unit</th><th class="num">Amount</th>' : '') + '<th></th></tr></thead>';
   const tb = document.createElement('tbody');
   const refreshers = [];
   lines.forEach((l, idx) => {
@@ -336,17 +380,26 @@ function lineTable(lines, stock, withPrice, onChange, rebuild) {
     tdSel.append(sel);
 
     const avail = document.createElement('td'); avail.className = 'num';
+
+    const tdUnit = document.createElement('td');
+    const unit = document.createElement('select');
+    unit.className = 'unit';
+    unit.innerHTML = '<option value="pcs">Pieces</option><option value="box">Boxes</option>';
+    unit.value = l.unit;
+    tdUnit.append(unit);
+
     const tdQty = document.createElement('td'); tdQty.className = 'num';
     const qty = document.createElement('input');
-    qty.type = 'number'; qty.min = '1'; qty.step = '1'; qty.placeholder = '0'; qty.value = l.pieces;
-    tdQty.append(qty);
+    qty.type = 'number'; qty.min = '1'; qty.step = '1'; qty.placeholder = '0'; qty.value = l.qty;
+    const qtyHint = document.createElement('span'); qtyHint.className = 'hint';
+    tdQty.append(qty, qtyHint);
 
     let price, amt;
-    const cells = [tdSel, avail, tdQty];
+    const cells = [tdSel, avail, tdUnit, tdQty];
     if (withPrice) {
       const tdP = document.createElement('td'); tdP.className = 'num';
       price = document.createElement('input');
-      price.type = 'number'; price.min = '0'; price.step = '0.01'; price.placeholder = '0.00'; price.value = l.price;
+      price.type = 'number'; price.min = '0'; price.step = '0.01'; price.value = l.price;
       tdP.append(price);
       amt = document.createElement('td'); amt.className = 'num';
       cells.push(tdP, amt);
@@ -354,17 +407,26 @@ function lineTable(lines, stock, withPrice, onChange, rebuild) {
     const tdDel = document.createElement('td');
     const del = document.createElement('button');
     del.type = 'button'; del.className = 'dim-del'; del.textContent = '×'; del.title = 'Remove item';
-    del.onclick = () => { lines.splice(idx, 1); if (!lines.length) lines.push(withPrice ? { label: '', pieces: '', price: '' } : { label: '', pieces: '' }); rebuild(); };
+    del.onclick = () => { lines.splice(idx, 1); if (!lines.length) lines.push(withPrice ? { label: '', unit: 'pcs', qty: '', price: '' } : { label: '', unit: 'pcs', qty: '' }); rebuild(); };
     tdDel.append(del);
     cells.push(tdDel);
 
     const refresh = () => {
-      const s = stock.find(r => r.label === l.label);
-      avail.textContent = s ? nf.format(s.pieces) : '—';
-      if (withPrice) amt.textContent = fmt((parseFloat(l.pieces) || 0) * (parseFloat(l.price) || 0));
+      const r = stock.find(x => x.label === l.label);
+      const box = (r && r.box_size) || 0;
+      avail.textContent = r ? nf.format(r.pieces) + ' pcs' : '—';
+      if (r && box) { const h = document.createElement('span'); h.className = 'hint'; h.textContent = boxText(r.pieces, box); avail.append(h); }
+      unit.querySelector('[value="box"]').disabled = !box;
+      if (!box && l.unit === 'box') { l.unit = 'pcs'; unit.value = 'pcs'; }
+      qtyHint.textContent = l.unit === 'box' && box ? '= ' + nf.format((parseInt(l.qty, 10) || 0) * box) + ' pcs' : '';
+      if (withPrice) {
+        price.placeholder = l.unit === 'box' ? 'per box' : 'per pc';
+        amt.textContent = fmt((parseFloat(l.qty) || 0) * (parseFloat(l.price) || 0));
+      }
     };
     sel.onchange = () => { l.label = sel.value; refresh(); onChange(); };
-    qty.oninput = () => { l.pieces = qty.value; refresh(); onChange(); };
+    unit.onchange = () => { l.unit = unit.value; refresh(); onChange(); };
+    qty.oninput = () => { l.qty = qty.value; refresh(); onChange(); };
     if (withPrice) price.oninput = () => { l.price = price.value; refresh(); onChange(); };
     refreshers.push(refresh);
     refresh();
@@ -388,9 +450,9 @@ function renderBillLines() {
 function updateBillTotals() {
   if (billTable) billTable._refresh();
   document.getElementById('billTotal').textContent = fmt(billTotal());
-  const active = billLines.filter(l => l.label || l.pieces || l.price);
+  const active = billLines.filter(l => l.label || l.qty || l.price);
   document.getElementById('billCount').textContent = active.length;
-  document.getElementById('billPieces').textContent = nf.format(active.reduce((t, l) => t + (parseInt(l.pieces, 10) || 0), 0));
+  document.getElementById('billPieces').textContent = nf.format(active.reduce((t, l) => t + pcsOf(l, billStock), 0));
 }
 
 async function renderBilling() {
@@ -426,8 +488,8 @@ async function renderBilling() {
 async function createBill() {
   const msg = document.getElementById('billMsg');
   msg.className = 'inv-msg err';
-  const items = billLines.filter(l => l.label || l.pieces || l.price)
-    .map(l => ({ label: l.label, pieces: l.pieces, unitPrice: l.price }));
+  const items = billLines.filter(l => l.label || l.qty || l.price)
+    .map(l => ({ label: l.label, unit: l.unit, qty: l.qty, unitPrice: l.price }));
   try {
     const id = await window.api.createInvoice({
       customerName: document.getElementById('custName').value,
@@ -437,12 +499,18 @@ async function createBill() {
     });
     document.getElementById('custName').value = '';
     document.getElementById('custPhone').value = '';
-    billLines = [{ label: '', pieces: '', price: '' }];
+    billLines = [{ label: '', unit: 'pcs', qty: '', price: '' }];
     await renderBilling();
     msg.className = 'inv-msg';
     msg.textContent = billNo(id) + ' created. Stock updated.';
     showInvoice(id);
   } catch (e) { msg.textContent = cleanErr(e); }
+}
+
+function qtyText(i) {
+  return i.unit === 'box'
+    ? nf.format(i.qty) + (i.qty === 1 ? ' box' : ' boxes') + ' (' + nf.format(i.pieces) + ' pcs)'
+    : nf.format(i.pieces) + ' pcs';
 }
 
 async function showInvoice(id) {
@@ -464,7 +532,7 @@ async function showInvoice(id) {
   const tb = document.createElement('tbody');
   inv.items.forEach(i => {
     const tr = document.createElement('tr');
-    [i.label, nf.format(i.pieces), money(i.unit_price, inv.currency), money(i.pieces * i.unit_price, inv.currency)].forEach((t, n) => {
+    [i.label, qtyText(i), money(i.unit_price, inv.currency) + (i.unit === 'box' ? ' / box' : ' / pc'), money((i.qty == null ? i.pieces : i.qty) * i.unit_price, inv.currency)].forEach((t, n) => {
       const td = document.createElement('td'); if (n) td.className = 'r'; td.textContent = t; tr.append(td);
     });
     tb.append(tr);
@@ -490,12 +558,12 @@ async function showInvoice(id) {
   document.body.append(overlay);
 }
 
-document.getElementById('addItemBtn').addEventListener('click', () => { billLines.push({ label: '', pieces: '', price: '' }); renderBillLines(); });
+document.getElementById('addItemBtn').addEventListener('click', () => { billLines.push({ label: '', unit: 'pcs', qty: '', price: '' }); renderBillLines(); });
 document.getElementById('createBillBtn').addEventListener('click', createBill);
 document.getElementById('currency').addEventListener('change', () => { if (!document.getElementById('viewBill').hidden) updateBillTotals(); });
 
 // ---------- Shop transfers ----------
-let shipLines = [{ label: '', pieces: '' }];
+let shipLines = [{ label: '', unit: 'pcs', qty: '' }];
 let shipStock = [];
 let shipTable = null;
 const shipNo = id => 'TRF-' + String(id).padStart(4, '0');
@@ -508,9 +576,9 @@ function renderShipLines() {
   updateShipTotals();
 }
 function updateShipTotals() {
-  const active = shipLines.filter(l => l.label || l.pieces);
+  const active = shipLines.filter(l => l.label || l.qty);
   document.getElementById('shipCount').textContent = active.length;
-  document.getElementById('shipPieces').textContent = nf.format(active.reduce((t, l) => t + (parseInt(l.pieces, 10) || 0), 0));
+  document.getElementById('shipPieces').textContent = nf.format(active.reduce((t, l) => t + pcsOf(l, shipStock), 0));
 }
 
 async function renderShipping() {
@@ -575,7 +643,7 @@ async function renderShipping() {
 async function createTransfer() {
   const msg = document.getElementById('shipMsg');
   msg.className = 'inv-msg err';
-  const items = shipLines.filter(l => l.label || l.pieces).map(l => ({ label: l.label, pieces: l.pieces }));
+  const items = shipLines.filter(l => l.label || l.qty).map(l => ({ label: l.label, unit: l.unit, qty: l.qty }));
   try {
     const id = await window.api.createTransfer({
       shopId: document.getElementById('shipShop').value,
@@ -583,7 +651,7 @@ async function createTransfer() {
       items,
     });
     document.getElementById('shipNote').value = '';
-    shipLines = [{ label: '', pieces: '' }];
+    shipLines = [{ label: '', unit: 'pcs', qty: '' }];
     await renderShipping();
     msg.className = 'inv-msg';
     msg.textContent = shipNo(id) + ' done. Stock moved to the shop.';
@@ -611,7 +679,7 @@ async function showTransfer(id) {
     total += i.pieces;
     const tr = document.createElement('tr');
     const a = document.createElement('td'); a.textContent = i.label;
-    const b = document.createElement('td'); b.className = 'r'; b.textContent = nf.format(i.pieces);
+    const b = document.createElement('td'); b.className = 'r'; b.textContent = qtyText(i);
     tr.append(a, b); tb.append(tr);
   });
   const tr = document.createElement('tr');
@@ -643,7 +711,7 @@ async function addShop() {
   } catch (e) { msg.textContent = cleanErr(e); }
 }
 document.getElementById('addShopBtn').addEventListener('click', addShop);
-document.getElementById('addShipItemBtn').addEventListener('click', () => { shipLines.push({ label: '', pieces: '' }); renderShipLines(); });
+document.getElementById('addShipItemBtn').addEventListener('click', () => { shipLines.push({ label: '', unit: 'pcs', qty: '' }); renderShipLines(); });
 document.getElementById('createShipBtn').addEventListener('click', createTransfer);
 
 // ---------- Settings ----------
@@ -771,6 +839,7 @@ document.getElementById('backupBtn').addEventListener('click', async () => {
 
 (async function init() {
   dimensions = await window.api.listDimensions();
+  await loadBoxSizes();
   const saved = await window.api.getSettings();
   ids.forEach(id => { if (saved[id] !== undefined) document.getElementById(id).value = saved[id]; });
   if (saved.currency) document.getElementById('currency').value = saved.currency;

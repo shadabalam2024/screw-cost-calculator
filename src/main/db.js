@@ -55,6 +55,10 @@ function open(userDataDir) {
       label TEXT NOT NULL,
       pieces INTEGER NOT NULL CHECK (pieces > 0)
     );
+    CREATE TABLE IF NOT EXISTS box_sizes (
+      label TEXT PRIMARY KEY COLLATE NOCASE,
+      pieces_per_box INTEGER NOT NULL CHECK (pieces_per_box > 0)
+    );
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
   `);
   // Link stock movements to the invoice that caused them (added after v1.1.0)
@@ -63,6 +67,12 @@ function open(userDataDir) {
   }
   if (!db.prepare('PRAGMA table_info(inventory_moves)').all().some(c => c.name === 'transfer_id')) {
     db.exec('ALTER TABLE inventory_moves ADD COLUMN transfer_id INTEGER');
+  }
+  for (const t of ['invoice_items', 'transfer_items']) {
+    const cols = db.prepare('PRAGMA table_info(' + t + ')').all().map(c => c.name);
+    if (!cols.includes('unit')) db.exec('ALTER TABLE ' + t + " ADD COLUMN unit TEXT NOT NULL DEFAULT 'pcs'");
+    if (!cols.includes('qty')) db.exec('ALTER TABLE ' + t + ' ADD COLUMN qty INTEGER');
+    if (!cols.includes('box_size')) db.exec('ALTER TABLE ' + t + ' ADD COLUMN box_size INTEGER');
   }
   db.pragma('foreign_keys = ON');
 
@@ -78,13 +88,52 @@ function open(userDataDir) {
   const stockOf = label => db.prepare(
     'SELECT COALESCE(SUM(pieces), 0) AS n FROM inventory_moves WHERE label = ?').get(label).n;
 
+  const boxFor = label => {
+    const r = db.prepare('SELECT pieces_per_box AS n FROM box_sizes WHERE label = ?').get(label);
+    return r ? r.n : 0;
+  };
+
+  // Validates one bill/transfer line and converts boxes to pieces
+  function resolveLine(i) {
+    const label = String(i.label || '').trim();
+    const unit = i.unit === 'box' ? 'box' : 'pcs';
+    const qty = Math.round(Number(i.qty));
+    if (!label) throw new Error('Choose a size for every item');
+    if (!(qty > 0)) throw new Error('Enter a quantity above 0 for every item');
+    let box = null;
+    let pieces = qty;
+    if (unit === 'box') {
+      box = boxFor(label);
+      if (!box) throw new Error('Set a box size for ' + label + ' in Inventory first');
+      pieces = qty * box;
+    }
+    return { label, unit, qty, box_size: box, pieces };
+  }
+
+  function checkStock(lines) {
+    const need = {};
+    lines.forEach(i => { const k = i.label.toLowerCase(); need[k] = (need[k] || 0) + i.pieces; });
+    for (const i of lines) {
+      if (need[i.label.toLowerCase()] > stockOf(i.label)) throw new Error('Not enough stock for ' + i.label + ' (have ' + stockOf(i.label) + ' pcs)');
+    }
+  }
+
   return {
+    setBoxSize(label, n) {
+      label = String(label || '').trim();
+      n = Math.round(Number(n));
+      if (!label) throw new Error('Invalid size');
+      if (n > 0) db.prepare('INSERT INTO box_sizes (label, pieces_per_box) VALUES (?, ?) ON CONFLICT(label) DO UPDATE SET pieces_per_box = excluded.pieces_per_box').run(label, n);
+      else db.prepare('DELETE FROM box_sizes WHERE label = ?').run(label);
+    },
+    getBoxSizes: () => db.prepare('SELECT label, pieces_per_box FROM box_sizes').all(),
     inventorySummary: () => db.prepare(`
-      SELECT label,
-             SUM(pieces) AS pieces,
-             COALESCE(SUM(CASE WHEN pieces > 0 THEN pieces * unit_cost END) /
-                      NULLIF(SUM(CASE WHEN pieces > 0 AND unit_cost IS NOT NULL THEN pieces END), 0), 0) AS avg_cost
-      FROM inventory_moves GROUP BY label HAVING SUM(pieces) > 0 ORDER BY label`).all(),
+      SELECT m.label AS label,
+             SUM(m.pieces) AS pieces,
+             COALESCE(SUM(CASE WHEN m.pieces > 0 THEN m.pieces * m.unit_cost END) /
+                      NULLIF(SUM(CASE WHEN m.pieces > 0 AND m.unit_cost IS NOT NULL THEN m.pieces END), 0), 0) AS avg_cost,
+             (SELECT pieces_per_box FROM box_sizes b WHERE b.label = m.label) AS box_size
+      FROM inventory_moves m GROUP BY m.label HAVING SUM(m.pieces) > 0 ORDER BY m.label`).all(),
     inventoryHistory: () => db.prepare(
       'SELECT id, label, pieces, unit_cost, created_at, invoice_id, transfer_id FROM inventory_moves ORDER BY id DESC LIMIT 200').all(),
     addStock(label, pieces, unitCost) {
@@ -114,30 +163,23 @@ function open(userDataDir) {
       customerName = String(customerName || '').trim();
       if (!customerName) throw new Error('Enter the customer name');
       if (!Array.isArray(items) || !items.length) throw new Error('Add at least one item');
-      const clean = items.map(i => ({
-        label: String(i.label || '').trim(),
-        pieces: Math.round(Number(i.pieces)),
-        unit_price: Number(i.unitPrice),
-      }));
-      for (const i of clean) {
-        if (!i.label) throw new Error('Choose a size for every item');
-        if (!(i.pieces > 0)) throw new Error('Enter a quantity above 0 for every item');
-        if (!(i.unit_price >= 0)) throw new Error('Enter a price for every item');
-      }
-      // Total requested per size must fit in stock
-      const need = {};
-      clean.forEach(i => { const k = i.label.toLowerCase(); need[k] = (need[k] || 0) + i.pieces; });
-      for (const i of clean) {
-        const k = i.label.toLowerCase();
-        if (need[k] > stockOf(i.label)) throw new Error('Not enough stock for ' + i.label + ' (have ' + stockOf(i.label) + ')');
-      }
-      const total = clean.reduce((t, i) => t + i.pieces * i.unit_price, 0);
+      const clean = items.map(i => {
+        const l = resolveLine(i);
+        l.unit_price = Number(i.unitPrice);
+        if (!(l.unit_price >= 0)) throw new Error('Enter a price for every item');
+        return l;
+      });
+      checkStock(clean);
+      const total = clean.reduce((t, i) => t + i.qty * i.unit_price, 0);
       return db.transaction(() => {
         const id = db.prepare('INSERT INTO invoices (customer_name, customer_phone, currency, total) VALUES (?, ?, ?, ?)')
           .run(customerName, String(customerPhone || '').trim(), String(currency || ''), total).lastInsertRowid;
-        const insItem = db.prepare('INSERT INTO invoice_items (invoice_id, label, pieces, unit_price) VALUES (?, ?, ?, ?)');
+        const insItem = db.prepare('INSERT INTO invoice_items (invoice_id, label, pieces, unit_price, unit, qty, box_size) VALUES (?, ?, ?, ?, ?, ?, ?)');
         const insMove = db.prepare('INSERT INTO inventory_moves (label, pieces, unit_cost, invoice_id) VALUES (?, ?, ?, ?)');
-        clean.forEach(i => { insItem.run(id, i.label, i.pieces, i.unit_price); insMove.run(i.label, -i.pieces, i.unit_price, id); });
+        clean.forEach(i => {
+          insItem.run(id, i.label, i.pieces, i.unit_price, i.unit, i.qty, i.box_size);
+          insMove.run(i.label, -i.pieces, (i.qty * i.unit_price) / i.pieces, id);
+        });
         return Number(id);
       })();
     },
@@ -145,7 +187,7 @@ function open(userDataDir) {
     getInvoice(id) {
       const inv = db.prepare('SELECT * FROM invoices WHERE id = ?').get(id);
       if (!inv) return null;
-      inv.items = db.prepare('SELECT label, pieces, unit_price FROM invoice_items WHERE invoice_id = ? ORDER BY id').all(id);
+      inv.items = db.prepare('SELECT label, pieces, unit_price, unit, qty, box_size FROM invoice_items WHERE invoice_id = ? ORDER BY id').all(id);
       return inv;
     },
     deleteInvoice(id) {
@@ -178,21 +220,13 @@ function open(userDataDir) {
       shopId = Number(shopId);
       if (!db.prepare('SELECT 1 FROM shops WHERE id = ?').get(shopId)) throw new Error('Choose a shop');
       if (!Array.isArray(items) || !items.length) throw new Error('Add at least one item');
-      const clean = items.map(i => ({ label: String(i.label || '').trim(), pieces: Math.round(Number(i.pieces)) }));
-      for (const i of clean) {
-        if (!i.label) throw new Error('Choose a size for every item');
-        if (!(i.pieces > 0)) throw new Error('Enter a quantity above 0 for every item');
-      }
-      const need = {};
-      clean.forEach(i => { const k = i.label.toLowerCase(); need[k] = (need[k] || 0) + i.pieces; });
-      for (const i of clean) {
-        if (need[i.label.toLowerCase()] > stockOf(i.label)) throw new Error('Not enough stock for ' + i.label + ' (have ' + stockOf(i.label) + ')');
-      }
+      const clean = items.map(resolveLine);
+      checkStock(clean);
       return db.transaction(() => {
         const id = db.prepare('INSERT INTO transfers (shop_id, note) VALUES (?, ?)').run(shopId, String(note || '').trim()).lastInsertRowid;
-        const insItem = db.prepare('INSERT INTO transfer_items (transfer_id, label, pieces) VALUES (?, ?, ?)');
+        const insItem = db.prepare('INSERT INTO transfer_items (transfer_id, label, pieces, unit, qty, box_size) VALUES (?, ?, ?, ?, ?, ?)');
         const insMove = db.prepare('INSERT INTO inventory_moves (label, pieces, transfer_id) VALUES (?, ?, ?)');
-        clean.forEach(i => { insItem.run(id, i.label, i.pieces); insMove.run(i.label, -i.pieces, id); });
+        clean.forEach(i => { insItem.run(id, i.label, i.pieces, i.unit, i.qty, i.box_size); insMove.run(i.label, -i.pieces, id); });
         return Number(id);
       })();
     },
@@ -203,7 +237,7 @@ function open(userDataDir) {
     getTransfer(id) {
       const t = db.prepare('SELECT t.id, t.created_at, t.note, s.name AS shop, s.location FROM transfers t JOIN shops s ON s.id = t.shop_id WHERE t.id = ?').get(id);
       if (!t) return null;
-      t.items = db.prepare('SELECT label, pieces FROM transfer_items WHERE transfer_id = ? ORDER BY id').all(id);
+      t.items = db.prepare('SELECT label, pieces, unit, qty, box_size FROM transfer_items WHERE transfer_id = ? ORDER BY id').all(id);
       return t;
     },
     deleteTransfer(id) {
