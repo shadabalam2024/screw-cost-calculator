@@ -38,11 +38,31 @@ function open(userDataDir) {
       pieces INTEGER NOT NULL CHECK (pieces > 0),
       unit_price REAL NOT NULL CHECK (unit_price >= 0)
     );
+    CREATE TABLE IF NOT EXISTS shops (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      location TEXT
+    );
+    CREATE TABLE IF NOT EXISTS transfers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      shop_id INTEGER NOT NULL REFERENCES shops(id),
+      note TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS transfer_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      transfer_id INTEGER NOT NULL REFERENCES transfers(id) ON DELETE CASCADE,
+      label TEXT NOT NULL,
+      pieces INTEGER NOT NULL CHECK (pieces > 0)
+    );
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
   `);
   // Link stock movements to the invoice that caused them (added after v1.1.0)
   if (!db.prepare('PRAGMA table_info(inventory_moves)').all().some(c => c.name === 'invoice_id')) {
     db.exec('ALTER TABLE inventory_moves ADD COLUMN invoice_id INTEGER');
+  }
+  if (!db.prepare('PRAGMA table_info(inventory_moves)').all().some(c => c.name === 'transfer_id')) {
+    db.exec('ALTER TABLE inventory_moves ADD COLUMN transfer_id INTEGER');
   }
   db.pragma('foreign_keys = ON');
 
@@ -66,7 +86,7 @@ function open(userDataDir) {
                       NULLIF(SUM(CASE WHEN pieces > 0 AND unit_cost IS NOT NULL THEN pieces END), 0), 0) AS avg_cost
       FROM inventory_moves GROUP BY label HAVING SUM(pieces) > 0 ORDER BY label`).all(),
     inventoryHistory: () => db.prepare(
-      'SELECT id, label, pieces, unit_cost, created_at, invoice_id FROM inventory_moves ORDER BY id DESC LIMIT 200').all(),
+      'SELECT id, label, pieces, unit_cost, created_at, invoice_id, transfer_id FROM inventory_moves ORDER BY id DESC LIMIT 200').all(),
     addStock(label, pieces, unitCost) {
       label = String(label || '').trim();
       pieces = Math.round(Number(pieces));
@@ -82,9 +102,10 @@ function open(userDataDir) {
       db.prepare('INSERT INTO inventory_moves (label, pieces) VALUES (?, ?)').run(label, -pieces);
     },
     deleteMove(id) {
-      const m = db.prepare('SELECT label, pieces, invoice_id FROM inventory_moves WHERE id = ?').get(id);
+      const m = db.prepare('SELECT label, pieces, invoice_id, transfer_id FROM inventory_moves WHERE id = ?').get(id);
       if (!m) return;
       if (m.invoice_id) throw new Error('This entry belongs to a bill. Cancel the bill instead.');
+      if (m.transfer_id) throw new Error('This entry belongs to a transfer. Cancel the transfer instead.');
       // Deleting an addition must not push stock below zero
       if (m.pieces > 0 && stockOf(m.label) - m.pieces < 0) throw new Error('Cannot delete: stock from this entry was already removed');
       db.prepare('DELETE FROM inventory_moves WHERE id = ?').run(id);
@@ -131,6 +152,64 @@ function open(userDataDir) {
       db.transaction(() => {
         db.prepare('DELETE FROM inventory_moves WHERE invoice_id = ?').run(id);
         db.prepare('DELETE FROM invoices WHERE id = ?').run(id);
+      })();
+    },
+    addShop(name, location) {
+      name = String(name || '').trim();
+      if (!name) throw new Error('Enter the shop name');
+      try { db.prepare('INSERT INTO shops (name, location) VALUES (?, ?)').run(name, String(location || '').trim()); }
+      catch (e) { if (String(e.message).includes('UNIQUE')) throw new Error('A shop with that name already exists'); throw e; }
+    },
+    listShops: () => db.prepare(`
+      SELECT s.id, s.name, s.location,
+             COALESCE((SELECT SUM(ti.pieces) FROM transfers t JOIN transfer_items ti ON ti.transfer_id = t.id WHERE t.shop_id = s.id), 0) AS pieces,
+             (SELECT COUNT(*) FROM transfers t WHERE t.shop_id = s.id) AS transfers
+      FROM shops s ORDER BY s.name`).all(),
+    deleteShop(id) {
+      const n = db.prepare('SELECT COUNT(*) AS n FROM transfers WHERE shop_id = ?').get(id).n;
+      if (n) throw new Error('This shop has transfers. Cancel them first.');
+      db.prepare('DELETE FROM shops WHERE id = ?').run(id);
+    },
+    shopStock: () => db.prepare(`
+      SELECT s.id AS shop_id, s.name AS shop, ti.label, SUM(ti.pieces) AS pieces
+      FROM transfer_items ti JOIN transfers t ON t.id = ti.transfer_id JOIN shops s ON s.id = t.shop_id
+      GROUP BY s.id, ti.label ORDER BY s.name, ti.label`).all(),
+    createTransfer({ shopId, note, items }) {
+      shopId = Number(shopId);
+      if (!db.prepare('SELECT 1 FROM shops WHERE id = ?').get(shopId)) throw new Error('Choose a shop');
+      if (!Array.isArray(items) || !items.length) throw new Error('Add at least one item');
+      const clean = items.map(i => ({ label: String(i.label || '').trim(), pieces: Math.round(Number(i.pieces)) }));
+      for (const i of clean) {
+        if (!i.label) throw new Error('Choose a size for every item');
+        if (!(i.pieces > 0)) throw new Error('Enter a quantity above 0 for every item');
+      }
+      const need = {};
+      clean.forEach(i => { const k = i.label.toLowerCase(); need[k] = (need[k] || 0) + i.pieces; });
+      for (const i of clean) {
+        if (need[i.label.toLowerCase()] > stockOf(i.label)) throw new Error('Not enough stock for ' + i.label + ' (have ' + stockOf(i.label) + ')');
+      }
+      return db.transaction(() => {
+        const id = db.prepare('INSERT INTO transfers (shop_id, note) VALUES (?, ?)').run(shopId, String(note || '').trim()).lastInsertRowid;
+        const insItem = db.prepare('INSERT INTO transfer_items (transfer_id, label, pieces) VALUES (?, ?, ?)');
+        const insMove = db.prepare('INSERT INTO inventory_moves (label, pieces, transfer_id) VALUES (?, ?, ?)');
+        clean.forEach(i => { insItem.run(id, i.label, i.pieces); insMove.run(i.label, -i.pieces, id); });
+        return Number(id);
+      })();
+    },
+    listTransfers: () => db.prepare(`
+      SELECT t.id, t.created_at, t.note, s.name AS shop,
+             (SELECT SUM(pieces) FROM transfer_items WHERE transfer_id = t.id) AS pieces
+      FROM transfers t JOIN shops s ON s.id = t.shop_id ORDER BY t.id DESC LIMIT 300`).all(),
+    getTransfer(id) {
+      const t = db.prepare('SELECT t.id, t.created_at, t.note, s.name AS shop, s.location FROM transfers t JOIN shops s ON s.id = t.shop_id WHERE t.id = ?').get(id);
+      if (!t) return null;
+      t.items = db.prepare('SELECT label, pieces FROM transfer_items WHERE transfer_id = ? ORDER BY id').all(id);
+      return t;
+    },
+    deleteTransfer(id) {
+      db.transaction(() => {
+        db.prepare('DELETE FROM inventory_moves WHERE transfer_id = ?').run(id);
+        db.prepare('DELETE FROM transfers WHERE id = ?').run(id);
       })();
     },
     listDimensions: () => db.prepare('SELECT label, weight FROM dimensions ORDER BY id').all(),

@@ -8,7 +8,7 @@ let win;
 
 function createWindow() {
   win = new BrowserWindow({
-    width: 560, height: 900, minWidth: 380, minHeight: 600,
+    width: 1280, height: 840, minWidth: 420, minHeight: 600,
     title: 'Screw Cost Calculator',
     autoHideMenuBar: true,
     webPreferences: {
@@ -35,6 +35,14 @@ function setupIpc() {
   ipcMain.handle('bill:list', () => db.listInvoices());
   ipcMain.handle('bill:get', (_e, id) => db.getInvoice(Number(id)));
   ipcMain.handle('bill:delete', (_e, id) => { db.deleteInvoice(Number(id)); });
+  ipcMain.handle('shop:add', (_e, name, location) => { db.addShop(name, location); });
+  ipcMain.handle('shop:list', () => db.listShops());
+  ipcMain.handle('shop:delete', (_e, id) => { db.deleteShop(Number(id)); });
+  ipcMain.handle('ship:stock', () => db.shopStock());
+  ipcMain.handle('ship:create', (_e, payload) => db.createTransfer(payload));
+  ipcMain.handle('ship:list', () => db.listTransfers());
+  ipcMain.handle('ship:get', (_e, id) => db.getTransfer(Number(id)));
+  ipcMain.handle('ship:delete', (_e, id) => { db.deleteTransfer(Number(id)); });
   ipcMain.handle('settings:get', () => db.getSettings());
   ipcMain.handle('settings:set', (_e, k, v) => { db.setSetting(k, v); });
   ipcMain.handle('settings:clear', () => { db.clearSettings(); });

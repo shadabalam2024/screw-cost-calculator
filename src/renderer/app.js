@@ -208,22 +208,16 @@ document.addEventListener('wheel', e => {
 const nf = new Intl.NumberFormat();
 const cleanErr = e => String((e && e.message) || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
 
-const VIEWS = [['calc', 'Calculator', 'viewCalc'], ['inv', 'Inventory', 'viewInv'], ['bill', 'Billing', 'viewBill']];
+const VIEWS = [['calc', 'viewCalc'], ['inv', 'viewInv'], ['bill', 'viewBill'], ['ship', 'viewShip']];
 function showView(v) {
-  VIEWS.forEach(([key, , id]) => { document.getElementById(id).hidden = key !== v; });
-  document.querySelectorAll('.tabbtn').forEach(b => b.classList.toggle('active', b.dataset.view === v));
+  VIEWS.forEach(([key, id]) => { document.getElementById(id).hidden = key !== v; });
+  document.querySelectorAll('.navbtn').forEach(b => b.classList.toggle('active', b.dataset.view === v));
+  window.scrollTo(0, 0);
   if (v === 'inv') renderInventory();
   if (v === 'bill') renderBilling();
+  if (v === 'ship') renderShipping();
 }
-document.querySelectorAll('.tabs').forEach(t => {
-  VIEWS.forEach(([key, name]) => {
-    const b = document.createElement('button');
-    b.type = 'button'; b.className = 'tabbtn'; b.dataset.view = key; b.textContent = name;
-    b.addEventListener('click', () => showView(key));
-    t.append(b);
-  });
-});
-showView('calc');
+document.querySelectorAll('.navbtn').forEach(b => b.addEventListener('click', () => showView(b.dataset.view)));
 
 async function addToInventory() {
   const msg = document.getElementById('invMsg');
@@ -297,7 +291,7 @@ async function renderInventory() {
       cell((h.pieces > 0 ? '+' : '') + nf.format(h.pieces), 'num ' + (h.pieces > 0 ? 'pos' : 'neg')),
       cell(h.unit_cost == null ? '—' : fmt(h.unit_cost), 'num'));
     const act = document.createElement('td');
-    if (h.invoice_id) { act.textContent = 'Bill #' + h.invoice_id; act.style.fontSize = '0.78rem'; act.style.color = 'var(--text-muted)'; tr.append(act); hb.append(tr); return; }
+    if (h.invoice_id || h.transfer_id) { act.textContent = h.invoice_id ? 'Bill #' + h.invoice_id : 'Transfer #' + h.transfer_id; act.style.fontSize = '0.78rem'; act.style.color = 'var(--text-muted)'; tr.append(act); hb.append(tr); return; }
     const del = document.createElement('button');
     del.type = 'button'; del.className = 'dim-del'; del.textContent = '×'; del.title = 'Delete entry';
     del.onclick = async () => {
@@ -319,53 +313,80 @@ const money = (n, cur) => (cur || '') + ' ' + Number(n).toFixed(2);
 
 function billTotal() { return billLines.reduce((t, l) => t + (parseFloat(l.pieces) || 0) * (parseFloat(l.price) || 0), 0); }
 
+function lineTable(lines, stock, withPrice, onChange, rebuild) {
+  const table = document.createElement('table');
+  table.className = 'inv line-table';
+  table.innerHTML = '<thead><tr><th>Item</th><th class="num">In stock</th><th class="num">Qty (pcs)</th>' +
+    (withPrice ? '<th class="num">Price / pc</th><th class="num">Amount</th>' : '') + '<th></th></tr></thead>';
+  const tb = document.createElement('tbody');
+  const refreshers = [];
+  lines.forEach((l, idx) => {
+    const tr = document.createElement('tr');
+    const tdSel = document.createElement('td');
+    const sel = document.createElement('select');
+    const ph = document.createElement('option');
+    ph.value = ''; ph.textContent = stock.length ? 'Choose size…' : 'No stock available';
+    sel.append(ph);
+    stock.forEach(r => { const o = document.createElement('option'); o.value = r.label; o.textContent = r.label; sel.append(o); });
+    sel.value = l.label;
+    tdSel.append(sel);
+
+    const avail = document.createElement('td'); avail.className = 'num';
+    const tdQty = document.createElement('td'); tdQty.className = 'num';
+    const qty = document.createElement('input');
+    qty.type = 'number'; qty.min = '1'; qty.step = '1'; qty.placeholder = '0'; qty.value = l.pieces;
+    tdQty.append(qty);
+
+    let price, amt;
+    const cells = [tdSel, avail, tdQty];
+    if (withPrice) {
+      const tdP = document.createElement('td'); tdP.className = 'num';
+      price = document.createElement('input');
+      price.type = 'number'; price.min = '0'; price.step = '0.01'; price.placeholder = '0.00'; price.value = l.price;
+      tdP.append(price);
+      amt = document.createElement('td'); amt.className = 'num';
+      cells.push(tdP, amt);
+    }
+    const tdDel = document.createElement('td');
+    const del = document.createElement('button');
+    del.type = 'button'; del.className = 'dim-del'; del.textContent = '×'; del.title = 'Remove item';
+    del.onclick = () => { lines.splice(idx, 1); if (!lines.length) lines.push(withPrice ? { label: '', pieces: '', price: '' } : { label: '', pieces: '' }); rebuild(); };
+    tdDel.append(del);
+    cells.push(tdDel);
+
+    const refresh = () => {
+      const s = stock.find(r => r.label === l.label);
+      avail.textContent = s ? nf.format(s.pieces) : '—';
+      if (withPrice) amt.textContent = fmt((parseFloat(l.pieces) || 0) * (parseFloat(l.price) || 0));
+    };
+    sel.onchange = () => { l.label = sel.value; refresh(); onChange(); };
+    qty.oninput = () => { l.pieces = qty.value; refresh(); onChange(); };
+    if (withPrice) price.oninput = () => { l.price = price.value; refresh(); onChange(); };
+    refreshers.push(refresh);
+    refresh();
+    tr.append(...cells);
+    tb.append(tr);
+  });
+  table.append(tb);
+  table._refresh = () => refreshers.forEach(f => f());
+  return table;
+}
+
+let billTable = null;
 function renderBillLines() {
   const box = document.getElementById('billItems');
   box.innerHTML = '';
-  billLines.forEach((l, idx) => {
-    const row = document.createElement('div');
-    row.className = 'bill-item';
-    const sel = document.createElement('select');
-    const ph = document.createElement('option');
-    ph.value = ''; ph.textContent = billStock.length ? 'Choose size…' : 'No stock available';
-    sel.append(ph);
-    billStock.forEach(r => {
-      const o = document.createElement('option');
-      o.value = r.label;
-      o.textContent = r.label + '  (' + nf.format(r.pieces) + ' pcs)';
-      sel.append(o);
-    });
-    sel.value = l.label;
-    sel.onchange = () => { l.label = sel.value; updateBillTotals(); };
-
-    const qty = document.createElement('input');
-    qty.type = 'number'; qty.min = '1'; qty.step = '1'; qty.placeholder = 'pcs'; qty.value = l.pieces;
-    qty.oninput = () => { l.pieces = qty.value; updateBillTotals(); };
-
-    const price = document.createElement('input');
-    price.type = 'number'; price.min = '0'; price.step = '0.01'; price.placeholder = 'price/pc'; price.value = l.price;
-    price.oninput = () => { l.price = price.value; updateBillTotals(); };
-
-    const line = document.createElement('span');
-    line.className = 'line';
-
-    const del = document.createElement('button');
-    del.type = 'button'; del.className = 'dim-del'; del.textContent = '×'; del.title = 'Remove item';
-    del.onclick = () => { billLines.splice(idx, 1); if (!billLines.length) billLines.push({ label: '', pieces: '', price: '' }); renderBillLines(); };
-
-    row.append(sel, qty, price, line, del);
-    row._line = line;
-    box.append(row);
-  });
+  billTable = lineTable(billLines, billStock, true, updateBillTotals, renderBillLines);
+  box.append(billTable);
   updateBillTotals();
 }
 
 function updateBillTotals() {
-  document.querySelectorAll('#billItems .bill-item').forEach((row, i) => {
-    const l = billLines[i];
-    row._line.textContent = fmt((parseFloat(l.pieces) || 0) * (parseFloat(l.price) || 0));
-  });
+  if (billTable) billTable._refresh();
   document.getElementById('billTotal').textContent = fmt(billTotal());
+  const active = billLines.filter(l => l.label || l.pieces || l.price);
+  document.getElementById('billCount').textContent = active.length;
+  document.getElementById('billPieces').textContent = nf.format(active.reduce((t, l) => t + (parseInt(l.pieces, 10) || 0), 0));
 }
 
 async function renderBilling() {
@@ -467,6 +488,157 @@ async function showInvoice(id) {
 document.getElementById('addItemBtn').addEventListener('click', () => { billLines.push({ label: '', pieces: '', price: '' }); renderBillLines(); });
 document.getElementById('createBillBtn').addEventListener('click', createBill);
 document.getElementById('currency').addEventListener('change', () => { if (!document.getElementById('viewBill').hidden) updateBillTotals(); });
+
+// ---------- Shop transfers ----------
+let shipLines = [{ label: '', pieces: '' }];
+let shipStock = [];
+let shipTable = null;
+const shipNo = id => 'TRF-' + String(id).padStart(4, '0');
+
+function renderShipLines() {
+  const box = document.getElementById('shipItems');
+  box.innerHTML = '';
+  shipTable = lineTable(shipLines, shipStock, false, updateShipTotals, renderShipLines);
+  box.append(shipTable);
+  updateShipTotals();
+}
+function updateShipTotals() {
+  const active = shipLines.filter(l => l.label || l.pieces);
+  document.getElementById('shipCount').textContent = active.length;
+  document.getElementById('shipPieces').textContent = nf.format(active.reduce((t, l) => t + (parseInt(l.pieces, 10) || 0), 0));
+}
+
+async function renderShipping() {
+  const [stock, shops, held, transfers] = await Promise.all([
+    window.api.inventorySummary(), window.api.listShops(), window.api.shopStock(), window.api.listTransfers()]);
+  shipStock = stock;
+  renderShipLines();
+
+  const sel = document.getElementById('shipShop');
+  const prev = sel.value;
+  sel.innerHTML = '';
+  const ph = document.createElement('option');
+  ph.value = ''; ph.textContent = shops.length ? 'Choose destination shop…' : 'Add a shop first';
+  sel.append(ph);
+  shops.forEach(s => { const o = document.createElement('option'); o.value = s.id; o.textContent = s.name; sel.append(o); });
+  sel.value = prev;
+
+  const sb = document.getElementById('shopBody');
+  sb.innerHTML = '';
+  if (!shops.length) sb.innerHTML = '<tr><td colspan="4" class="empty">No shops yet. Add one below.</td></tr>';
+  shops.forEach(sh => {
+    const tr = document.createElement('tr');
+    tr.append(cell(sh.name), cell(sh.location || '—'), cell(nf.format(sh.pieces), 'num'));
+    const td = document.createElement('td');
+    const del = document.createElement('button');
+    del.type = 'button'; del.className = 'dim-del'; del.textContent = '×'; del.title = 'Delete shop';
+    del.onclick = async () => {
+      if (!await confirmDelete('Delete ' + sh.name + '?', 'The shop will be removed from your list.')) return;
+      try { await window.api.deleteShop(sh.id); renderShipping(); }
+      catch (e) { document.getElementById('shopMsg').textContent = cleanErr(e); }
+    };
+    td.append(del); tr.append(td); sb.append(tr);
+  });
+
+  const hb = document.getElementById('shopStockBody');
+  hb.innerHTML = '';
+  if (!held.length) hb.innerHTML = '<tr><td colspan="3" class="empty">No stock at shops yet.</td></tr>';
+  held.forEach(r => { const tr = document.createElement('tr'); tr.append(cell(r.shop), cell(r.label), cell(nf.format(r.pieces), 'num')); hb.append(tr); });
+
+  const tb = document.getElementById('shipBody');
+  tb.innerHTML = '';
+  if (!transfers.length) tb.innerHTML = '<tr><td colspan="6" class="empty">No transfers yet.</td></tr>';
+  transfers.forEach(t => {
+    const tr = document.createElement('tr');
+    tr.append(cell(shipNo(t.id)), cell(new Date(t.created_at.replace(' ', 'T') + 'Z').toLocaleString()),
+      cell(t.shop), cell(nf.format(t.pieces), 'num'), cell(t.note || '—'));
+    const td = document.createElement('td');
+    const view = document.createElement('button');
+    view.type = 'button'; view.className = 'mini-btn'; view.textContent = 'View';
+    view.onclick = () => showTransfer(t.id);
+    const cancel = document.createElement('button');
+    cancel.type = 'button'; cancel.className = 'mini-btn'; cancel.textContent = 'Cancel'; cancel.style.marginLeft = '6px';
+    cancel.onclick = async () => {
+      if (!await confirmDelete('Cancel ' + shipNo(t.id) + '?', 'The transfer will be deleted and its pieces returned to the main inventory.', 'Cancel transfer')) return;
+      await window.api.deleteTransfer(t.id);
+      renderShipping();
+    };
+    td.append(view, cancel); tr.append(td); tb.append(tr);
+  });
+}
+
+async function createTransfer() {
+  const msg = document.getElementById('shipMsg');
+  msg.className = 'inv-msg err';
+  const items = shipLines.filter(l => l.label || l.pieces).map(l => ({ label: l.label, pieces: l.pieces }));
+  try {
+    const id = await window.api.createTransfer({
+      shopId: document.getElementById('shipShop').value,
+      note: document.getElementById('shipNote').value,
+      items,
+    });
+    document.getElementById('shipNote').value = '';
+    shipLines = [{ label: '', pieces: '' }];
+    await renderShipping();
+    msg.className = 'inv-msg';
+    msg.textContent = shipNo(id) + ' done. Stock moved to the shop.';
+  } catch (e) { msg.textContent = cleanErr(e); }
+}
+
+async function showTransfer(id) {
+  const t = await window.api.getTransfer(id);
+  if (!t) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay sheet-overlay';
+  const sheet = document.createElement('div');
+  sheet.className = 'invoice-sheet';
+  const h = document.createElement('h3'); h.textContent = shipNo(t.id) + ' — Stock transfer';
+  const meta = document.createElement('div');
+  meta.textContent = new Date(t.created_at.replace(' ', 'T') + 'Z').toLocaleString();
+  const to = document.createElement('div'); to.style.marginTop = '8px';
+  to.textContent = 'To: ' + t.shop + (t.location ? ' (' + t.location + ')' : '') + (t.note ? ' · ' + t.note : '');
+  const table = document.createElement('table');
+  table.innerHTML = '<thead><tr><th>Item</th><th class="r">Qty</th></tr></thead>';
+  const tb = document.createElement('tbody');
+  let total = 0;
+  t.items.forEach(i => {
+    total += i.pieces;
+    const tr = document.createElement('tr');
+    const a = document.createElement('td'); a.textContent = i.label;
+    const b = document.createElement('td'); b.className = 'r'; b.textContent = nf.format(i.pieces);
+    tr.append(a, b); tb.append(tr);
+  });
+  const tr = document.createElement('tr');
+  const a = document.createElement('td'); a.innerHTML = '<strong>Total pieces</strong>';
+  const b = document.createElement('td'); b.className = 'r'; b.innerHTML = '<strong></strong>'; b.firstChild.textContent = nf.format(total);
+  tr.append(a, b); tb.append(tr); table.append(tb);
+  const actions = document.createElement('div'); actions.className = 'actions no-print';
+  const print = document.createElement('button'); print.textContent = 'Print'; print.onclick = () => window.print();
+  const close = document.createElement('button'); close.textContent = 'Close';
+  const done = () => { document.removeEventListener('keydown', onKey); overlay.remove(); };
+  const onKey = e => { if (e.key === 'Escape') done(); };
+  close.onclick = done;
+  document.addEventListener('keydown', onKey);
+  overlay.addEventListener('mousedown', e => { if (e.target === overlay) done(); });
+  actions.append(print, close);
+  sheet.append(h, meta, to, table, actions);
+  overlay.append(sheet);
+  document.body.append(overlay);
+}
+
+async function addShop() {
+  const msg = document.getElementById('shopMsg');
+  try {
+    await window.api.addShop(document.getElementById('shopName').value, document.getElementById('shopLoc').value);
+    document.getElementById('shopName').value = '';
+    document.getElementById('shopLoc').value = '';
+    msg.textContent = '';
+    renderShipping();
+  } catch (e) { msg.textContent = cleanErr(e); }
+}
+document.getElementById('addShopBtn').addEventListener('click', addShop);
+document.getElementById('addShipItemBtn').addEventListener('click', () => { shipLines.push({ label: '', pieces: '' }); renderShipLines(); });
+document.getElementById('createShipBtn').addEventListener('click', createTransfer);
 
 (async function init() {
   dimensions = await window.api.listDimensions();

@@ -59,11 +59,13 @@
     background: var(--bg);
     color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    display: flex;
-    justify-content: center;
-    padding: 28px 16px 60px;
+    display: block;
+    padding: 0;
   }
-  .wrap { width: 100%; max-width: 760px; }
+  .app { display: flex; min-height: 100vh; }
+  main { flex: 1; min-width: 0; }
+  .wrap { width: 100%; max-width: 760px; margin: 0 auto; padding: 28px 16px 60px; }
+  .wrap.page { max-width: 1320px; }
   header { margin-bottom: 20px; }
   h1 { font-size: 1.4rem; margin: 0 0 4px; }
   .sub { color: var(--text-muted); font-size: 0.92rem; margin: 0; }
@@ -270,8 +272,8 @@
   @media (max-width: 899px) { .dim-list { flex-direction: row; flex-wrap: wrap; } .dim-item { flex: 0 1 auto; } }
 
   @media (min-width: 900px) {
-    body { padding: 40px 32px 60px; }
     .wrap {
+      padding: 36px 32px 60px;
       max-width: 1320px;
       display: grid;
       grid-template-columns: 220px 1fr 1fr;
@@ -287,12 +289,12 @@
   /* Tablet: single column, a bit more breathing room */
   @media (min-width: 600px) and (max-width: 899px) {
     .wrap { max-width: 640px; }
-    body { padding: 32px 24px 60px; }
+    .wrap { padding: 32px 24px 60px; }
   }
 
   /* Phones */
   @media (max-width: 599px) {
-    body { padding: 20px 12px 40px; }
+    .wrap { padding: 20px 12px 40px; }
     h1 { font-size: 1.25rem; }
     .sub { font-size: 0.85rem; }
     .card { padding: 14px; border-radius: 12px; margin-bottom: 14px; }
@@ -308,13 +310,6 @@
     .field { margin-left: auto; }
   }
 
-  .tabs { display: flex; gap: 6px; margin-top: 12px; }
-  .tabbtn {
-    background: var(--surface); border: 1px solid var(--border); color: var(--text-muted);
-    padding: 8px 16px; border-radius: 999px; font-size: 0.9rem; cursor: pointer;
-  }
-  .tabbtn:hover { color: var(--text); border-color: var(--accent); }
-  .tabbtn.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
   .primary-btn {
     width: 100%; margin-top: 12px; padding: 11px 14px; border-radius: 10px; border: none;
     background: var(--accent); color: #fff; font-size: 0.95rem; font-weight: 600; cursor: pointer;
@@ -323,6 +318,36 @@
   .inv-msg { font-size: 0.82rem; margin-top: 8px; min-height: 1em; color: var(--good); }
   .inv-msg.err { color: #c0392b; }
   [hidden] { display: none !important; }
+  .sidebar {
+    width: 210px; flex: 0 0 210px; background: var(--surface); border-right: 1px solid var(--border);
+    padding: 22px 12px; position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: 4px;
+  }
+  .brand { font-weight: 700; font-size: 1.05rem; padding: 4px 12px 18px; }
+  .navbtn {
+    display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+    background: none; border: none; color: var(--text-muted); padding: 10px 12px; border-radius: 10px;
+    font-size: 0.95rem; cursor: pointer;
+  }
+  .navbtn:hover { background: var(--surface-alt); color: var(--text); }
+  .navbtn.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .split { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px; align-items: start; }
+  .split2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+  .side-panel { position: sticky; top: 24px; }
+  .side-panel input[type="text"], .side-panel select { width: 100%; margin-bottom: 10px; }
+  .sum-row { display: flex; justify-content: space-between; padding: 6px 0; color: var(--text-muted); font-size: 0.9rem; }
+  .line-table input[type="number"] { width: 100%; max-width: 110px; }
+  .line-table select { width: 100%; min-width: 140px; }
+  .line-table td.num, .line-table th.num { white-space: nowrap; }
+  .page h1 { margin-bottom: 4px; }
+  .page header { margin-bottom: 22px; }
+  @media (max-width: 899px) {
+    .app { flex-direction: column; }
+    .sidebar { width: 100%; flex: none; height: auto; position: static; flex-direction: row; overflow-x: auto; padding: 8px; border-right: none; border-bottom: 1px solid var(--border); }
+    .brand { display: none; }
+    .navbtn { width: auto; white-space: nowrap; }
+    .split, .split2 { grid-template-columns: 1fr; }
+    .side-panel { position: static; }
+  }
   .inv-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px; }
   .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px; box-shadow: var(--shadow); }
   .stat .k { color: var(--text-muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; }
@@ -342,8 +367,8 @@
     padding: 5px 10px; border-radius: 8px; font-size: 0.8rem; cursor: pointer;
   }
   .mini-btn:hover { color: var(--text); border-color: var(--accent); }
-  #viewInv.wrap, #viewBill.wrap { display: block; }
-  .bill-item { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .wrap.page { display: block; }
+  .bill-item-unused { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
   .bill-item select { flex: 1 1 160px; min-width: 0; }
   .bill-item input[type="number"] { width: 90px; }
   .bill-item .line { margin-left: auto; font-weight: 600; min-width: 90px; text-align: right; }
@@ -373,11 +398,19 @@
 </style>
 </head>
 <body>
+<div class="app">
+<nav class="sidebar">
+  <div class="brand">⚙️ Screw Manager</div>
+  <button type="button" class="navbtn active" data-view="calc">🧮 Calculator</button>
+  <button type="button" class="navbtn" data-view="inv">📦 Inventory</button>
+  <button type="button" class="navbtn" data-view="bill">🧾 Billing</button>
+  <button type="button" class="navbtn" data-view="ship">🚚 Shop transfers</button>
+</nav>
+<main>
 <div class="wrap" id="viewCalc">
   <header>
     <h1>⚙️ Screw Cost Calculator</h1>
-    <div class="tabs"></div>
-  </header>
+      </header>
 
   <div class="top-controls">
     <select id="currency">
@@ -595,11 +628,10 @@
 
 </div>
 
-<div class="wrap" id="viewInv" hidden>
+<div class="wrap page" id="viewInv" hidden>
   <header>
     <h1>📦 Screw Inventory</h1>
-    <div class="tabs"></div>
-  </header>
+      </header>
 
   <div class="inv-stats">
     <div class="stat"><div class="k">Sizes in stock</div><div class="v" id="s-sizes">0</div></div>
@@ -629,23 +661,29 @@
   </div>
 </div>
 
-<div class="wrap" id="viewBill" hidden>
+<div class="wrap page" id="viewBill" hidden>
   <header>
     <h1>🧾 Billing</h1>
-    <div class="tabs"></div>
+    <p class="sub">Create a bill for a customer. Stock is deducted automatically.</p>
   </header>
-
-  <div class="card bill-form">
-    <h2>New bill</h2>
-    <input type="text" id="custName" placeholder="Customer name">
-    <input type="text" id="custPhone" placeholder="Phone (optional)">
-    <div id="billItems"></div>
-    <button type="button" class="reset" id="addItemBtn" style="margin-top:12px">+ Add item</button>
-    <div class="bill-total"><span>Total</span><span id="billTotal">—</span></div>
-    <button type="button" class="primary-btn" id="createBillBtn">Create bill &amp; deduct stock</button>
-    <div class="inv-msg" id="billMsg"></div>
+  <div class="split">
+    <div class="card">
+      <h2>Items</h2>
+      <div class="tbl-scroll" id="billItems"></div>
+      <button type="button" class="reset" id="addItemBtn" style="margin-top:12px">+ Add item</button>
+    </div>
+    <aside class="card side-panel">
+      <h2>Customer</h2>
+      <input type="text" id="custName" placeholder="Customer name">
+      <input type="text" id="custPhone" placeholder="Phone (optional)">
+      <hr class="soft">
+      <div class="sum-row"><span>Line items</span><span id="billCount">0</span></div>
+      <div class="sum-row"><span>Total pieces</span><span id="billPieces">0</span></div>
+      <div class="bill-total"><span>Total</span><span id="billTotal">—</span></div>
+      <button type="button" class="primary-btn" id="createBillBtn">Create bill &amp; deduct stock</button>
+      <div class="inv-msg" id="billMsg"></div>
+    </aside>
   </div>
-
   <div class="card">
     <h2>Past bills</h2>
     <div class="tbl-scroll">
@@ -655,6 +693,67 @@
       </table>
     </div>
   </div>
+</div>
+
+<div class="wrap page" id="viewShip" hidden>
+  <header>
+    <h1>🚚 Shop transfers</h1>
+    <p class="sub">Move screws from the main inventory to your own shops.</p>
+  </header>
+  <div class="split">
+    <div class="card">
+      <h2>Items to transfer</h2>
+      <div class="tbl-scroll" id="shipItems"></div>
+      <button type="button" class="reset" id="addShipItemBtn" style="margin-top:12px">+ Add item</button>
+    </div>
+    <aside class="card side-panel">
+      <h2>Destination</h2>
+      <select id="shipShop"></select>
+      <input type="text" id="shipNote" placeholder="Note (optional)">
+      <hr class="soft">
+      <div class="sum-row"><span>Line items</span><span id="shipCount">0</span></div>
+      <div class="bill-total"><span>Total pieces</span><span id="shipPieces">0</span></div>
+      <button type="button" class="primary-btn" id="createShipBtn">Transfer stock</button>
+      <div class="inv-msg" id="shipMsg"></div>
+    </aside>
+  </div>
+  <div class="split2">
+    <div class="card">
+      <h2>Shops</h2>
+      <div class="tbl-scroll">
+        <table class="inv">
+          <thead><tr><th>Shop</th><th>Location</th><th class="num">Pieces held</th><th></th></tr></thead>
+          <tbody id="shopBody"></tbody>
+        </table>
+      </div>
+      <div class="dim-add">
+        <input type="text" id="shopName" placeholder="Shop name">
+        <input type="text" id="shopLoc" placeholder="Location (optional)">
+        <button type="button" class="reset" id="addShopBtn">+ Add shop</button>
+        <div class="dim-msg" id="shopMsg"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Stock at shops</h2>
+      <div class="tbl-scroll">
+        <table class="inv">
+          <thead><tr><th>Shop</th><th>Size</th><th class="num">Pieces</th></tr></thead>
+          <tbody id="shopStockBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Transfer history</h2>
+    <div class="tbl-scroll">
+      <table class="inv">
+        <thead><tr><th>Transfer</th><th>Date</th><th>Shop</th><th class="num">Pieces</th><th>Note</th><th></th></tr></thead>
+        <tbody id="shipBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</main>
 </div>
 
 <script src="app.js"></script>
