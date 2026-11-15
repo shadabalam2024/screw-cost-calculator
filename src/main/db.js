@@ -166,7 +166,7 @@ function open(userDataDir) {
       const clean = items.map(i => {
         const l = resolveLine(i);
         l.unit_price = Number(i.unitPrice);
-        if (!(l.unit_price >= 0)) throw new Error('Enter a price for every item');
+        if (String(i.unitPrice == null ? '' : i.unitPrice).trim() === '' || !(l.unit_price > 0)) throw new Error('Enter the price for every item');
         return l;
       });
       checkStock(clean);

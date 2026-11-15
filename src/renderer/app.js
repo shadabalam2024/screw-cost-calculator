@@ -512,6 +512,7 @@ async function createBill() {
   msg.className = 'inv-msg err';
   const items = billLines.filter(l => l.label || l.qty || l.price)
     .map(l => ({ label: l.label, unit: l.unit, qty: l.qty, boxSize: l.boxSize, unitPrice: l.price }));
+  if (items.some(l => !(parseFloat(l.unitPrice) > 0))) { msg.textContent = 'Enter the price for every item before creating the bill.'; return; }
   try {
     const id = await window.api.createInvoice({
       customerName: document.getElementById('custName').value,
