@@ -285,17 +285,26 @@ async function renderInventory() {
     totalPieces += r.pieces;
     totalValue += value;
     const tr = document.createElement('tr');
-    tr.append(cell(r.label), cell(nf.format(r.pieces), 'num'), cell(boxText(r.pieces, r.box_size), 'num'));
+    const boxCell = cell(boxText(r.pieces, r.box_size), 'num');
+    tr.append(cell(r.label), cell(nf.format(r.pieces), 'num'), boxCell);
     const tdBox = document.createElement('td');
     tdBox.className = 'num';
     const boxInput = document.createElement('input');
     boxInput.type = 'number'; boxInput.min = '1'; boxInput.step = '1'; boxInput.placeholder = 'set';
     boxInput.value = r.box_size || '';
     boxInput.title = 'Pieces in one box. Changing this updates the box count.';
-    boxInput.onchange = async () => {
-      try { await window.api.setBoxSize(r.label, boxInput.value); await loadBoxSizes(); await renderInventory(); }
+    let saveTimer;
+    const saveBox = async () => {
+      try { await window.api.setBoxSize(r.label, boxInput.value); await loadBoxSizes(); }
       catch (e) { stockMsg.textContent = cleanErr(e); }
     };
+    boxInput.oninput = () => {
+      // Update the box count instantly while typing, save shortly after
+      boxCell.textContent = boxText(r.pieces, parseInt(boxInput.value, 10));
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(saveBox, 300);
+    };
+    boxInput.onchange = () => { clearTimeout(saveTimer); saveBox(); };
     tdBox.append(boxInput);
     tr.append(tdBox, cell(fmt(r.avg_cost), 'num'), cell(fmt(value), 'num'));
     const td = document.createElement('td');
